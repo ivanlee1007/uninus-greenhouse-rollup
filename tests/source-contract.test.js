@@ -31,7 +31,15 @@ test('card respects reduced motion and uses namespaced effect classes', async ()
 
 test('index registers card, editor and visual picker metadata', async () => {
   const text = await source('src/index.js');
+  assert.match(text, /customElements\.define/);
   assert.match(text, /uninus-greenhouse-rollup-card-editor/);
   assert.match(text, /window\.customCards/);
   assert.match(text, /UNiNUS Greenhouse Rollup Card/);
+  assert.match(text, /preview:\s*true/);
+});
+
+test('card root avoids ha-card mutation that corrupts bundled Lit parts under card-mod', async () => {
+  const text = await source('src/card.js');
+  assert.doesNotMatch(text, /<ha-card/);
+  assert.match(text, /rollup-card/);
 });

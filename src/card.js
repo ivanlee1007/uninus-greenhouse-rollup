@@ -6,7 +6,7 @@ export class UninusGreenhouseRollupCard extends LitElement {
 
   static styles = css`
     :host{display:block;height:100%;min-width:0;container-type:size}
-    ha-card{display:block;position:relative;width:100%;height:100%;min-height:190px;box-sizing:border-box;overflow:hidden;padding:clamp(12px,2.5cqw,20px);border-radius:22px;background:var(--rollup-bg);color:var(--rollup-text);border:1px solid color-mix(in srgb,var(--rollup-text) 10%,transparent);box-shadow:0 14px 38px rgba(0,0,0,.24)}
+    .rollup-card{display:block;position:relative;width:100%;height:100%;min-height:190px;box-sizing:border-box;overflow:hidden;padding:clamp(12px,2.5cqw,20px);border-radius:22px;background:var(--rollup-bg);color:var(--rollup-text);border:1px solid color-mix(in srgb,var(--rollup-text) 10%,transparent);box-shadow:0 14px 38px rgba(0,0,0,.24)}
     .header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin:0 2px 14px;text-align:left}.header h2{margin:0;font-size:clamp(16px,3.8cqw,21px);line-height:1.2;letter-spacing:.035em}.header p{margin:5px 0 0;color:var(--rollup-muted);font-size:clamp(9px,2cqw,11px);overflow-wrap:anywhere}.system{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border:1px solid color-mix(in srgb,var(--rollup-moving) 28%,transparent);border-radius:999px;color:var(--rollup-moving);font-size:8px;font-weight:800;white-space:nowrap}.system i{width:6px;height:6px;border-radius:50%;background:#64d9a0;box-shadow:0 0 8px #64d9a0}
     .faces{display:grid;gap:clamp(8px,1.8cqw,13px);min-width:0}.one-by-four .faces{grid-template-columns:repeat(4,minmax(0,1fr))}.two-by-two .faces,.compact .faces{grid-template-columns:repeat(2,minmax(0,1fr))}.one-column .faces{grid-template-columns:minmax(0,1fr)}
     .face{min-width:0;padding:clamp(8px,1.8cqw,13px);border-radius:17px;background:var(--rollup-surface);border:1px solid color-mix(in srgb,var(--rollup-text) 9%,transparent);box-shadow:inset 0 1px color-mix(in srgb,var(--rollup-text) 5%,transparent),0 7px 18px rgba(0,0,0,.17)}
@@ -17,7 +17,7 @@ export class UninusGreenhouseRollupCard extends LitElement {
     .scale{position:absolute;z-index:6;right:5px;color:rgba(255,255,255,.52);font-size:7px;text-shadow:0 1px 2px #000}.scale.top{top:6px}.scale.mid{top:calc(50% - 4px)}.scale.bottom{bottom:5px}.percent{position:absolute;z-index:7;left:7px;bottom:6px;padding:3px 5px;border-radius:6px;background:rgba(0,0,0,.4);color:#fff;font-size:8px;font-weight:900}
     .foot{display:flex;align-items:end;justify-content:space-between;gap:7px;margin-top:8px;text-align:left}.copy{display:grid;min-width:0;gap:2px}.copy strong,.copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.copy strong{font-size:clamp(9px,2.2cqw,11px)}.copy small{color:var(--rollup-muted);font-size:clamp(8px,1.7cqw,9px)}.foot em{color:var(--face-accent);font-size:clamp(10px,2.5cqw,13px);font-style:normal;font-weight:900}
     .one-by-four .face{padding:clamp(6px,1cqw,9px)}.one-by-four .face-head{grid-template-columns:22px minmax(0,1fr);grid-template-areas:'compass name' 'motion motion';gap:4px;margin-bottom:6px}.one-by-four .compass{grid-area:compass;width:22px;height:22px}.one-by-four .name{grid-area:name}.one-by-four .motion{grid-area:motion;justify-content:center;padding:4px 6px}.one-by-four .scene{height:clamp(64px,25cqh,88px)}.one-by-four .foot{display:grid;margin-top:6px}.one-by-four .foot em{display:none}
-    .compact ha-card{padding:8px}.compact .header{margin-bottom:6px}.compact .header p,.compact .system{display:none}.compact .header h2{font-size:13px}.compact .faces{grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}.compact .face{padding:4px;border-radius:10px}.compact .face-head{grid-template-columns:18px minmax(0,1fr) 12px;gap:3px;margin-bottom:4px}.compact .compass{width:18px;height:18px;border-radius:6px;font-size:7px}.compact .name{font-size:8px}.compact .motion{width:10px;height:10px;box-sizing:border-box;padding:2px;font-size:0;border-radius:50%}.compact .motion i{width:5px;height:5px}.compact .scene{height:54px;border-radius:7px}.compact .foot{margin-top:4px}.compact .copy strong{font-size:7px}.compact .copy small,.compact .foot em{display:none}
+    .compact.rollup-card{padding:8px}.compact .header{margin-bottom:6px}.compact .header p,.compact .system{display:none}.compact .header h2{font-size:13px}.compact .faces{grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}.compact .face{padding:4px;border-radius:10px}.compact .face-head{grid-template-columns:18px minmax(0,1fr) 12px;gap:3px;margin-bottom:4px}.compact .compass{width:18px;height:18px;border-radius:6px;font-size:7px}.compact .name{font-size:8px}.compact .motion{width:10px;height:10px;box-sizing:border-box;padding:2px;font-size:0;border-radius:50%}.compact .motion i{width:5px;height:5px}.compact .scene{height:54px;border-radius:7px}.compact .foot{margin-top:4px}.compact .copy strong{font-size:7px}.compact .copy small,.compact .foot em{display:none}
     .one-column .scene{height:clamp(54px,12cqh,104px)}.one-column .face{padding:9px}.one-column .face-head{margin-bottom:6px}.one-column .foot{margin-top:6px}
     @keyframes roll{to{background-position:30px 0}}@keyframes sweep{0%{left:-40%;opacity:0}35%{opacity:1}100%{left:120%;opacity:0}}@keyframes airflow{0%{left:-45%;opacity:0}25%{opacity:.9}100%{left:110%;opacity:0}}@keyframes pulse{0%,100%{opacity:.55;transform:scale(.85)}50%{opacity:1;transform:scale(1.2)}}
     @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -34,13 +34,13 @@ export class UninusGreenhouseRollupCard extends LitElement {
   _moreInfo(entityId){if(!entityId)return;this.dispatchEvent(new CustomEvent('hass-more-info',{detail:{entityId},bubbles:true,composed:true}))}
 
   render(){
-    if(!this.hass)return html`<ha-card><div>等待 Home Assistant 狀態資料…</div></ha-card>`;
+    if(!this.hass)return html`<div class="rollup-card"><div>等待 Home Assistant 狀態資料…</div></div>`;
     const tokens=resolveThemeTokens(this._config);const subtitle=resolveSubtitle(this._config,this.hass.states);
     const style=`--rollup-bg:${tokens.background};--rollup-surface:${tokens.surface};--rollup-text:${tokens.text};--rollup-muted:${tokens.muted};--rollup-frame:${tokens.frame};--rollup-moving:${this._config.status_moving_color};--rollup-idle:${this._config.status_idle_color}`;
-    return html`<ha-card class=${this._layout} style=${style} aria-label=${`${this._config.title}，${subtitle}`}>
+    return html`<div class=${`rollup-card ${this._layout}`} style=${style} aria-label=${`${this._config.title}，${subtitle}`}>
       <header class="header"><div><h2>${this._config.title}</h2>${subtitle?html`<p>${subtitle}</p>`:nothing}</div><span class="system"><i></i>GREENHOUSE VENTILATION</span></header>
       <section class="faces">${this._config.faces.map((face)=>this._renderFace(face))}</section>
-    </ha-card>`;
+    </div>`;
   }
 
   _renderFace(face){
