@@ -3,7 +3,7 @@ import { UninusGreenhouseRollupCardEditor } from './editor.js';
 
 const CARD_TAG='uninus-greenhouse-rollup-card';
 const EDITOR_TAG='uninus-greenhouse-rollup-card-editor';
-const VERSION='1.0.0';
+const VERSION='1.0.1';
 if(!customElements.get(EDITOR_TAG))customElements.define(EDITOR_TAG,UninusGreenhouseRollupCardEditor);
 if(!customElements.get(CARD_TAG))customElements.define(CARD_TAG,UninusGreenhouseRollupCard);
 window.customCards=window.customCards||[];
