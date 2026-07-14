@@ -1,0 +1,6 @@
+{
+  "name": "UNiNUS Greenhouse Rollup Card",
+  "filename": "uninus-greenhouse-rollup-card.js",
+  "render_readme": true,
+  "homeassistant": "2024.8.0"
+}

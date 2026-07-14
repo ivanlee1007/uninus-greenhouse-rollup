@@ -1,0 +1,63 @@
+import { LitElement, html, css, nothing } from 'lit';
+import { normalizeConfig, resolveFaceState, resolveSubtitle, resolveThemeTokens, selectLayout } from './model.js';
+
+export class UninusGreenhouseRollupCard extends LitElement {
+  static properties = { hass: { attribute: false }, _config: { state: true }, _layout: { state: true } };
+
+  static styles = css`
+    :host{display:block;height:100%;min-width:0;container-type:size}
+    ha-card{display:block;position:relative;width:100%;height:100%;min-height:190px;box-sizing:border-box;overflow:hidden;padding:clamp(12px,2.5cqw,20px);border-radius:22px;background:var(--rollup-bg);color:var(--rollup-text);border:1px solid color-mix(in srgb,var(--rollup-text) 10%,transparent);box-shadow:0 14px 38px rgba(0,0,0,.24)}
+    .header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin:0 2px 14px;text-align:left}.header h2{margin:0;font-size:clamp(16px,3.8cqw,21px);line-height:1.2;letter-spacing:.035em}.header p{margin:5px 0 0;color:var(--rollup-muted);font-size:clamp(9px,2cqw,11px);overflow-wrap:anywhere}.system{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border:1px solid color-mix(in srgb,var(--rollup-moving) 28%,transparent);border-radius:999px;color:var(--rollup-moving);font-size:8px;font-weight:800;white-space:nowrap}.system i{width:6px;height:6px;border-radius:50%;background:#64d9a0;box-shadow:0 0 8px #64d9a0}
+    .faces{display:grid;gap:clamp(8px,1.8cqw,13px);min-width:0}.one-by-four .faces{grid-template-columns:repeat(4,minmax(0,1fr))}.two-by-two .faces,.compact .faces{grid-template-columns:repeat(2,minmax(0,1fr))}.one-column .faces{grid-template-columns:minmax(0,1fr)}
+    .face{min-width:0;padding:clamp(8px,1.8cqw,13px);border-radius:17px;background:var(--rollup-surface);border:1px solid color-mix(in srgb,var(--rollup-text) 9%,transparent);box-shadow:inset 0 1px color-mix(in srgb,var(--rollup-text) 5%,transparent),0 7px 18px rgba(0,0,0,.17)}
+    .face-head{display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:7px;margin-bottom:9px}.compass{display:grid;place-items:center;width:28px;height:28px;border-radius:9px;background:color-mix(in srgb,var(--face-accent) 13%,transparent);border:1px solid color-mix(in srgb,var(--face-accent) 25%,transparent);color:var(--face-accent);font-size:10px;font-weight:900}.name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:clamp(10px,2.5cqw,13px);font-weight:800}.motion{display:inline-flex;align-items:center;gap:5px;padding:5px 7px;border-radius:999px;background:color-mix(in srgb,var(--status-color) 13%,transparent);border:1px solid color-mix(in srgb,var(--status-color) 32%,transparent);color:var(--status-color);font-size:clamp(8px,1.8cqw,10px);font-weight:800;white-space:nowrap}.motion i{width:6px;height:6px;border-radius:50%;background:var(--status-color)}.moving .motion i{box-shadow:0 0 9px var(--status-color);animation:pulse 1s ease-in-out infinite}
+    .scene{position:relative;height:clamp(96px,24cqw,132px);overflow:hidden;border-radius:11px;background:var(--rollup-frame);border:1px solid color-mix(in srgb,var(--rollup-text) 15%,transparent);box-shadow:inset 0 0 0 3px rgba(0,0,0,.12),inset 0 0 22px rgba(0,0,0,.22)}.opening{position:absolute;left:4px;right:4px;bottom:4px;height:max(0px,calc(var(--open) - 4px));overflow:hidden;background:linear-gradient(145deg,color-mix(in srgb,var(--open-color) 36%,white),var(--open-color));box-shadow:inset 0 0 23px rgba(255,255,220,.15),0 0 20px color-mix(in srgb,var(--open-color) 35%,transparent);transition:height .65s cubic-bezier(.2,.8,.2,1),background .65s}.curtain{position:absolute;left:4px;right:4px;top:4px;height:max(0px,calc(100% - var(--open) - 4px));overflow:hidden;background:linear-gradient(90deg,#1d292f,#3b4c54 28%,#26353c 52%,#43565e 74%,#1b272d);border-bottom:1px solid rgba(255,255,255,.14);transition:height .65s cubic-bezier(.2,.8,.2,1)}.curtain b{position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.07)}.curtain b:first-of-type{left:34%}.curtain b:last-of-type{left:67%}.shine{position:absolute;inset:0 auto 0 -35%;width:30%;transform:skewX(-16deg);background:linear-gradient(90deg,transparent,rgba(255,255,255,.12),transparent)}
+    .roller{position:absolute;z-index:5;left:1px;right:1px;bottom:clamp(4px,calc(var(--open) - 5px),calc(100% - 14px));height:11px;display:flex;align-items:center;transition:bottom .65s cubic-bezier(.2,.8,.2,1)}.roller span{flex:1;height:9px;border-radius:999px;border:1px solid rgba(255,240,170,.46);background:repeating-linear-gradient(90deg,#705714 0,var(--face-accent) 5px,#aa7b13 10px,#fff0a0 15px);box-shadow:0 2px 6px rgba(0,0,0,.5),0 0 10px color-mix(in srgb,var(--face-accent) 30%,transparent)}.roller i{width:7px;height:11px;border-radius:3px;background:#adb7ba}.moving.animated .roller span{animation:roll .43s linear infinite}.moving.animated .shine{animation:sweep 1.35s ease-in-out infinite}
+    .rollup-air{position:absolute;left:-45%;width:44%;height:2px;border-radius:999px;opacity:0;background:linear-gradient(90deg,transparent,rgba(225,252,255,.95),transparent)}.rollup-air:nth-child(1){bottom:25%}.rollup-air:nth-child(2){bottom:50%;animation-delay:.18s!important}.rollup-air:nth-child(3){bottom:75%;animation-delay:.36s!important}.moving.animated .rollup-air{animation:airflow 1.45s ease-in-out infinite}.ray{position:absolute;top:-20%;width:12px;height:145%;opacity:.23;transform:rotate(20deg);background:linear-gradient(transparent,rgba(255,255,230,.9),transparent)}.ray.one{left:25%}.ray.two{left:68%}
+    .scale{position:absolute;z-index:6;right:5px;color:rgba(255,255,255,.52);font-size:7px;text-shadow:0 1px 2px #000}.scale.top{top:6px}.scale.mid{top:calc(50% - 4px)}.scale.bottom{bottom:5px}.percent{position:absolute;z-index:7;left:7px;bottom:6px;padding:3px 5px;border-radius:6px;background:rgba(0,0,0,.4);color:#fff;font-size:8px;font-weight:900}
+    .foot{display:flex;align-items:end;justify-content:space-between;gap:7px;margin-top:8px;text-align:left}.copy{display:grid;min-width:0;gap:2px}.copy strong,.copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.copy strong{font-size:clamp(9px,2.2cqw,11px)}.copy small{color:var(--rollup-muted);font-size:clamp(8px,1.7cqw,9px)}.foot em{color:var(--face-accent);font-size:clamp(10px,2.5cqw,13px);font-style:normal;font-weight:900}
+    .one-by-four .face{padding:clamp(7px,1.2cqw,10px)}.one-by-four .face-head{grid-template-columns:24px minmax(0,1fr);grid-template-areas:'compass name' 'motion motion';gap:5px}.one-by-four .compass{grid-area:compass;width:24px;height:24px}.one-by-four .name{grid-area:name}.one-by-four .motion{grid-area:motion;justify-content:center}.one-by-four .scene{height:clamp(86px,13cqw,118px)}.one-by-four .foot{display:grid}.one-by-four .foot em{display:none}
+    .compact ha-card{padding:10px}.compact .header{margin-bottom:8px}.compact .header p,.compact .system{display:none}.compact .scene{height:68px}.compact .face{padding:7px}.compact .face-head{grid-template-columns:22px minmax(0,1fr) auto;margin-bottom:5px}.compact .compass{width:22px;height:22px}.compact .foot{margin-top:5px}.compact .copy strong{font-size:9px}
+    .one-column .scene{height:clamp(110px,32cqw,160px)}
+    @keyframes roll{to{background-position:30px 0}}@keyframes sweep{0%{left:-40%;opacity:0}35%{opacity:1}100%{left:120%;opacity:0}}@keyframes airflow{0%{left:-45%;opacity:0}25%{opacity:.9}100%{left:110%;opacity:0}}@keyframes pulse{0%,100%{opacity:.55;transform:scale(.85)}50%{opacity:1;transform:scale(1.2)}}
+    @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+  `;
+
+  constructor(){super();this._config=normalizeConfig({});this._layout='two-by-two';this._observer=null;this._lastRect={width:0,height:0}}
+  setConfig(config){this._config=normalizeConfig(config);this._measure()}
+  connectedCallback(){super.connectedCallback();this._observe()}
+  disconnectedCallback(){this._observer?.disconnect();super.disconnectedCallback()}
+  firstUpdated(){this._observe();this._measure()}
+  _observe(){if(!globalThis.ResizeObserver)return;if(!this._observer)this._observer=new ResizeObserver((entries)=>{const r=entries[0]?.contentRect;if(r)this._setLayout(r.width,r.height)});this._observer.disconnect();this._observer.observe(this)}
+  _measure(){const r=this.getBoundingClientRect?.();if(r)this._setLayout(r.width,r.height)}
+  _setLayout(width,height){this._lastRect={width,height};const next=selectLayout({width,height,forceOneByFour:this._config.force_1x4});if(next!==this._layout)this._layout=next}
+  _moreInfo(entityId){if(!entityId)return;this.dispatchEvent(new CustomEvent('hass-more-info',{detail:{entityId},bubbles:true,composed:true}))}
+
+  render(){
+    if(!this.hass)return html`<ha-card><div>等待 Home Assistant 狀態資料…</div></ha-card>`;
+    const tokens=resolveThemeTokens(this._config);const subtitle=resolveSubtitle(this._config,this.hass.states);
+    const style=`--rollup-bg:${tokens.background};--rollup-surface:${tokens.surface};--rollup-text:${tokens.text};--rollup-muted:${tokens.muted};--rollup-frame:${tokens.frame};--rollup-moving:${this._config.status_moving_color};--rollup-idle:${this._config.status_idle_color}`;
+    return html`<ha-card class=${this._layout} style=${style} aria-label=${`${this._config.title}，${subtitle}`}>
+      <header class="header"><div><h2>${this._config.title}</h2>${subtitle?html`<p>${subtitle}</p>`:nothing}</div><span class="system"><i></i>GREENHOUSE VENTILATION</span></header>
+      <section class="faces">${this._config.faces.map((face)=>this._renderFace(face))}</section>
+    </ha-card>`;
+  }
+
+  _renderFace(face){
+    const state=resolveFaceState(face,this.hass.states);const accent=face.accent_color||this._config.open_color;const status=state.moving?this._config.status_moving_color:this._config.status_idle_color;const light=18+state.percent*.48;const open=face.accent_color||`hsl(43 96% ${light}%)`;const cls=`face ${state.moving?'moving':'idle'} ${this._config.animation?'animated':''}`;
+    return html`<article class=${cls} style=${`--open:${state.percent}%;--face-accent:${accent};--status-color:${status};--open-color:${open}`} @click=${()=>this._moreInfo(face.entity)}>
+      <div class="face-head"><span class="compass">${face.compass}</span><span class="name">${face.name}捲揚</span><span class="motion"><i></i>${state.motionLabel}</span></div>
+      <div class="scene" role="img" aria-label=${`${face.name}捲揚，${state.positionLabel}，${state.motionLabel}`}>
+        <div class="opening"><b class="ray one"></b><b class="ray two"></b><i class="rollup-air"></i><i class="rollup-air"></i><i class="rollup-air"></i></div>
+        <div class="curtain"><i class="shine"></i><b></b><b></b></div><div class="roller"><i></i><span></span><i></i></div>
+        <span class="scale top">100</span><span class="scale mid">50</span><span class="scale bottom">0</span><strong class="percent">${state.available?`${state.percent}%`:'—'}</strong>
+      </div>
+      <footer class="foot"><span class="copy"><strong>${state.positionLabel}</strong><small>${state.available?`${Math.round(state.value)} ${this._config.unit} / ${state.maximum} ${this._config.unit}`:face.entity||'尚未設定實體'}</small></span><em>${state.available?`${state.percent}%`:'N/A'}</em></footer>
+    </article>`;
+  }
+
+  getCardSize(){return this._layout==='one-by-four'||this._layout==='compact'?4:8}
+  getGridOptions(){return {columns:'full',rows:this._layout==='one-by-four'?4:8,min_columns:6,min_rows:3}}
+  static getStubConfig(){return normalizeConfig({faces:[{key:'east',entity:'input_number.up_lift_position_e',motion_entity:'binary_sensor.rollup_e_moving'},{key:'south',entity:'input_number.up_lift_position_s',motion_entity:'binary_sensor.rollup_s_moving'},{key:'west',entity:'input_number.up_lift_position_w',motion_entity:'binary_sensor.rollup_w_moving'},{key:'north',entity:'input_number.up_lift_position_n',motion_entity:'binary_sensor.rollup_n_moving'}]})}
+  static async getConfigElement(){await customElements.whenDefined('uninus-greenhouse-rollup-card-editor');return document.createElement('uninus-greenhouse-rollup-card-editor')}
+}
