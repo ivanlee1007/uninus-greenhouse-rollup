@@ -38,8 +38,12 @@ test('index registers card, editor and visual picker metadata', async () => {
   assert.match(text, /preview:\s*true/);
 });
 
-test('card root avoids ha-card mutation that corrupts bundled Lit parts under card-mod', async () => {
-  const text = await source('src/card.js');
-  assert.doesNotMatch(text, /<ha-card/);
-  assert.match(text, /rollup-card/);
+test('card and editor use native Web Components to avoid HA Lit patch corruption', async () => {
+  const card = await source('src/card.js');
+  const editor = await source('src/editor.js');
+  assert.doesNotMatch(card, /from ['"]lit['"]/);
+  assert.doesNotMatch(editor, /from ['"]lit['"]/);
+  assert.match(card, /extends HTMLElement/);
+  assert.match(editor, /extends HTMLElement/);
+  assert.match(card, /rollup-card/);
 });

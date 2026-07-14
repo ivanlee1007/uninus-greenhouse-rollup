@@ -1,10 +1,10 @@
-import { LitElement, html, css, nothing } from 'lit';
 import { normalizeConfig, resolveFaceState, resolveSubtitle, resolveThemeTokens, selectLayout } from './model.js';
 
-export class UninusGreenhouseRollupCard extends LitElement {
-  static properties = { hass: { attribute: false }, _config: { state: true }, _layout: { state: true } };
+const escapeHtml=(value)=>String(value??'').replace(/[&<>"']/g,(char)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 
-  static styles = css`
+export class UninusGreenhouseRollupCard extends HTMLElement {
+
+  static styles = `
     :host{display:block;height:100%;min-width:0;container-type:size}
     .rollup-card{display:block;position:relative;width:100%;height:100%;min-height:190px;box-sizing:border-box;overflow:hidden;padding:clamp(12px,2.5cqw,20px);border-radius:22px;background:var(--rollup-bg);color:var(--rollup-text);border:1px solid color-mix(in srgb,var(--rollup-text) 10%,transparent);box-shadow:0 14px 38px rgba(0,0,0,.24)}
     .header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin:0 2px 14px;text-align:left}.header h2{margin:0;font-size:clamp(16px,3.8cqw,21px);line-height:1.2;letter-spacing:.035em}.header p{margin:5px 0 0;color:var(--rollup-muted);font-size:clamp(9px,2cqw,11px);overflow-wrap:anywhere}.system{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border:1px solid color-mix(in srgb,var(--rollup-moving) 28%,transparent);border-radius:999px;color:var(--rollup-moving);font-size:8px;font-weight:800;white-space:nowrap}.system i{width:6px;height:6px;border-radius:50%;background:#64d9a0;box-shadow:0 0 8px #64d9a0}
@@ -23,36 +23,39 @@ export class UninusGreenhouseRollupCard extends LitElement {
     @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
   `;
 
-  constructor(){super();this._config=normalizeConfig({});this._layout='two-by-two';this._observer=null;this._lastRect={width:0,height:0}}
-  setConfig(config){this._config=normalizeConfig(config);this._measure()}
-  connectedCallback(){super.connectedCallback();this._observe()}
-  disconnectedCallback(){this._observer?.disconnect();super.disconnectedCallback()}
-  firstUpdated(){this._observe();this._measure()}
+  constructor(){super();this.attachShadow({mode:'open'});this._config=normalizeConfig({});this._layout='two-by-two';this._observer=null;this._lastRect={width:0,height:0};this._hass=null}
+  set hass(value){this._hass=value;this._render()}
+  get hass(){return this._hass}
+  setConfig(config){this._config=normalizeConfig(config);this._measure();this._render()}
+  connectedCallback(){this._observe();this._measure();this._render()}
+  disconnectedCallback(){this._observer?.disconnect()}
   _observe(){if(!globalThis.ResizeObserver)return;if(!this._observer)this._observer=new ResizeObserver((entries)=>{const r=entries[0]?.contentRect;if(r)this._setLayout(r.width,r.height)});this._observer.disconnect();this._observer.observe(this)}
   _measure(){const r=this.getBoundingClientRect?.();if(r)this._setLayout(r.width,r.height)}
-  _setLayout(width,height){this._lastRect={width,height};const next=selectLayout({width,height,forceOneByFour:this._config.force_1x4});if(next!==this._layout)this._layout=next}
+  _setLayout(width,height){this._lastRect={width,height};const next=selectLayout({width,height,forceOneByFour:this._config.force_1x4});if(next!==this._layout){this._layout=next;this._render()}}
   _moreInfo(entityId){if(!entityId)return;this.dispatchEvent(new CustomEvent('hass-more-info',{detail:{entityId},bubbles:true,composed:true}))}
 
-  render(){
-    if(!this.hass)return html`<div class="rollup-card"><div>等待 Home Assistant 狀態資料…</div></div>`;
+  _render(){
+    if(!this.shadowRoot)return;
+    if(!this.hass){this.shadowRoot.innerHTML=`<style>${this.constructor.styles}</style><div class="rollup-card"><div>等待 Home Assistant 狀態資料…</div></div>`;return}
     const tokens=resolveThemeTokens(this._config);const subtitle=resolveSubtitle(this._config,this.hass.states);
     const style=`--rollup-bg:${tokens.background};--rollup-surface:${tokens.surface};--rollup-text:${tokens.text};--rollup-muted:${tokens.muted};--rollup-frame:${tokens.frame};--rollup-moving:${this._config.status_moving_color};--rollup-idle:${this._config.status_idle_color}`;
-    return html`<div class=${`rollup-card ${this._layout}`} style=${style} aria-label=${`${this._config.title}，${subtitle}`}>
-      <header class="header"><div><h2>${this._config.title}</h2>${subtitle?html`<p>${subtitle}</p>`:nothing}</div><span class="system"><i></i>GREENHOUSE VENTILATION</span></header>
-      <section class="faces">${this._config.faces.map((face)=>this._renderFace(face))}</section>
+    this.shadowRoot.innerHTML=`<style>${this.constructor.styles}</style><div class="rollup-card ${escapeHtml(this._layout)}" style="${escapeHtml(style)}" aria-label="${escapeHtml(`${this._config.title}，${subtitle}`)}">
+      <header class="header"><div><h2>${escapeHtml(this._config.title)}</h2>${subtitle?`<p>${escapeHtml(subtitle)}</p>`:''}</div><span class="system"><i></i>GREENHOUSE VENTILATION</span></header>
+      <section class="faces">${this._config.faces.map((face)=>this._renderFace(face)).join('')}</section>
     </div>`;
+    this.shadowRoot.querySelectorAll('.face').forEach((element)=>element.addEventListener('click',()=>this._moreInfo(element.dataset.entity)));
   }
 
   _renderFace(face){
     const state=resolveFaceState(face,this.hass.states);const accent=face.accent_color||this._config.open_color;const status=state.moving?this._config.status_moving_color:this._config.status_idle_color;const light=18+state.percent*.48;const open=face.accent_color||`hsl(43 96% ${light}%)`;const cls=`face ${state.moving?'moving':'idle'} ${this._config.animation?'animated':''}`;
-    return html`<article class=${cls} style=${`--open:${state.percent}%;--face-accent:${accent};--status-color:${status};--open-color:${open}`} @click=${()=>this._moreInfo(face.entity)}>
-      <div class="face-head"><span class="compass">${face.compass}</span><span class="name">${face.name}捲揚</span><span class="motion"><i></i>${state.motionLabel}</span></div>
-      <div class="scene" role="img" aria-label=${`${face.name}捲揚，${state.positionLabel}，${state.motionLabel}`}>
+    return `<article class="${escapeHtml(cls)}" data-entity="${escapeHtml(face.entity)}" style="--open:${state.percent}%;--face-accent:${escapeHtml(accent)};--status-color:${escapeHtml(status)};--open-color:${escapeHtml(open)}">
+      <div class="face-head"><span class="compass">${escapeHtml(face.compass)}</span><span class="name">${escapeHtml(face.name)}捲揚</span><span class="motion"><i></i>${escapeHtml(state.motionLabel)}</span></div>
+      <div class="scene" role="img" aria-label="${escapeHtml(`${face.name}捲揚，${state.positionLabel}，${state.motionLabel}`)}">
         <div class="opening"><b class="ray one"></b><b class="ray two"></b><i class="rollup-air"></i><i class="rollup-air"></i><i class="rollup-air"></i></div>
         <div class="curtain"><i class="shine"></i><b></b><b></b></div><div class="roller"><i></i><span></span><i></i></div>
         <span class="scale top">100</span><span class="scale mid">50</span><span class="scale bottom">0</span><strong class="percent">${state.available?`${state.percent}%`:'—'}</strong>
       </div>
-      <footer class="foot"><span class="copy"><strong>${state.positionLabel}</strong><small>${state.available?`${Math.round(state.value)} ${this._config.unit} / ${state.maximum} ${this._config.unit}`:face.entity||'尚未設定實體'}</small></span><em>${state.available?`${state.percent}%`:'N/A'}</em></footer>
+      <footer class="foot"><span class="copy"><strong>${escapeHtml(state.positionLabel)}</strong><small>${escapeHtml(state.available?`${Math.round(state.value)} ${this._config.unit} / ${state.maximum} ${this._config.unit}`:face.entity||'尚未設定實體')}</small></span><em>${state.available?`${state.percent}%`:'N/A'}</em></footer>
     </article>`;
   }
 
