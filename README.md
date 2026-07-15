@@ -10,8 +10,8 @@
 - 全閉、局部開啟、全開及實際刻度文字。
 - 開啟面積越大，顯示越明亮；捲動時具有捲軸、氣流、掃光及狀態燈動畫。
 - 完整**視覺化設定**：標題、副標文字、副標 Entity／Attribute、四面名稱與 Entity、狀態色、開啟色、每面強調色及背景氛圍。
-- `ResizeObserver` 依卡片本身的寬、高及比例切換 `1 × 4`、`2 × 2`、單欄與短版配置，而不是只看瀏覽器寬度。
-- 可由設定 UI 強制使用 **1 × 4** 模式。
+- 可在設定 UI 選擇**每列捲揚數量**（1～4 個，每列最多 4 個）。
+- `ResizeObserver` 依卡片實際寬度，在不超過使用者設定數量的前提下，自動降為 3、2 或 1 欄，避免面板過窄。
 - 背景預設提供：原始暗色、明亮霧白、溫室青綠、日光暖沙，亦可指定自訂 CSS 顏色。
 - 支援 `prefers-reduced-motion`、HA More Info 與 Sections Grid。
 
@@ -67,7 +67,7 @@ subtitle_entity: sensor.greenhouse_status
 subtitle_attribute: description
 theme: greenhouse
 background_color: ""
-force_1x4: false
+items_per_row: 4
 animation: true
 unit: 秒
 status_idle_color: "#8798a2"

@@ -11,15 +11,26 @@ import {
   applyEditorChange,
   resolveThemeTokens,
   isValidColor,
+  GRID_OPTIONS,
 } from '../src/model.js';
 
 test('normalizeConfig creates four ordered faces and preserves explicit false', () => {
-  const config = normalizeConfig({ animation: false, theme: 'light', faces: [{ key: 'east', name: '東溫室' }] });
+  const config = normalizeConfig({ animation: false, theme: 'light', items_per_row: 3, faces: [{ key: 'east', name: '東溫室' }] });
   assert.deepEqual(config.faces.map((face) => face.key), FACE_KEYS);
   assert.equal(config.faces[0].name, '東溫室');
   assert.equal(config.animation, false);
   assert.equal(config.theme, 'light');
+  assert.equal(config.items_per_row, 3);
   assert.equal(config.faces[1].name, '南側');
+});
+
+test('normalizeConfig clamps items per row and removes the legacy force flag', () => {
+  assert.equal(normalizeConfig({ items_per_row: 0 }).items_per_row, 1);
+  assert.equal(normalizeConfig({ items_per_row: 9 }).items_per_row, 4);
+  assert.equal(normalizeConfig({ items_per_row: 2.8 }).items_per_row, 2);
+  const migrated = normalizeConfig({ force_1x4: true });
+  assert.equal(migrated.items_per_row, 4);
+  assert.equal('force_1x4' in migrated, false);
 });
 
 test('normalizeConfig rejects invalid theme and colors', () => {
@@ -66,15 +77,40 @@ test('resolveSubtitle prefers configured attribute and preserves numeric zero', 
   assert.equal(resolveSubtitle({ subtitle: 'fallback' }, states), 'fallback');
 });
 
-test('selectLayout responds to actual card geometry', () => {
-  assert.equal(selectLayout({ width: 920, height: 300 }), 'one-by-four');
-  assert.equal(selectLayout({ width: 620, height: 420 }), 'two-by-two');
-  assert.equal(selectLayout({ width: 300, height: 420 }), 'one-column');
-  assert.equal(selectLayout({ width: 300, height: 180 }), 'compact');
+test('selectLayout respects the configured maximum items per row', () => {
+  assert.equal(selectLayout({ width: 920, itemsPerRow: 4 }), 'columns-4');
+  assert.equal(selectLayout({ width: 920, itemsPerRow: 3 }), 'columns-3');
+  assert.equal(selectLayout({ width: 920, itemsPerRow: 2 }), 'columns-2');
+  assert.equal(selectLayout({ width: 920, itemsPerRow: 1 }), 'columns-1');
 });
 
-test('selectLayout force override always returns one-by-four', () => {
-  assert.equal(selectLayout({ width: 280, height: 600, forceOneByFour: true }), 'one-by-four');
+test('selectLayout keeps the configured columns before the card has a measurable width', () => {
+  assert.equal(selectLayout({ width: 0, itemsPerRow: 4 }), 'columns-4');
+  assert.equal(selectLayout({ itemsPerRow: 3 }), 'columns-3');
+});
+
+test('selectLayout reduces columns responsively without exceeding the user setting', () => {
+  assert.equal(selectLayout({ width: 700, itemsPerRow: 4 }), 'columns-3');
+  assert.equal(selectLayout({ width: 520, itemsPerRow: 4 }), 'columns-2');
+  assert.equal(selectLayout({ width: 320, itemsPerRow: 4 }), 'columns-1');
+  assert.equal(selectLayout({ width: 700, itemsPerRow: 2 }), 'columns-2');
+});
+
+test('selectLayout locks responsive breakpoint boundaries', () => {
+  assert.equal(selectLayout({ width: 399, itemsPerRow: 4 }), 'columns-1');
+  assert.equal(selectLayout({ width: 400, itemsPerRow: 4 }), 'columns-2');
+  assert.equal(selectLayout({ width: 619, itemsPerRow: 4 }), 'columns-2');
+  assert.equal(selectLayout({ width: 620, itemsPerRow: 4 }), 'columns-3');
+  assert.equal(selectLayout({ width: 819, itemsPerRow: 4 }), 'columns-3');
+  assert.equal(selectLayout({ width: 820, itemsPerRow: 4 }), 'columns-4');
+});
+
+test('grid options use intrinsic height so responsive rows are never clipped', () => {
+  assert.equal(GRID_OPTIONS.columns, 'full');
+  assert.equal(GRID_OPTIONS.min_columns, 6);
+  assert.equal('rows' in GRID_OPTIONS, false);
+  assert.equal('min_rows' in GRID_OPTIONS, false);
+  assert.equal('max_rows' in GRID_OPTIONS, false);
 });
 
 test('updateFaceConfig only changes the requested face', () => {

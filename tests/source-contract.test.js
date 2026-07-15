@@ -15,11 +15,19 @@ test('card exposes Home Assistant custom-card lifecycle and responsive observer'
   }
 });
 
-test('editor exposes global, subtitle, per-face entity and color controls', async () => {
+test('card uses inline containment so responsive rows keep intrinsic height', async () => {
+  const text = await source('src/card.js');
+  assert.match(text, /container-type:inline-size/);
+  assert.doesNotMatch(text, /container-type:size/);
+  assert.doesNotMatch(text, /cqh/);
+});
+
+test('editor exposes adaptive items-per-row, subtitle, per-face entity and color controls', async () => {
   const text = await source('src/editor.js');
-  for (const marker of ['subtitle_attribute', 'force_1x4', 'status_moving_color', 'background_color', 'motion_entity', 'max_entity', 'accent_color', 'ha-entity-picker', 'config-changed']) {
+  for (const marker of ['subtitle_attribute', 'items_per_row', '每列捲揚數量', 'status_moving_color', 'background_color', 'motion_entity', 'max_entity', 'accent_color', 'ha-entity-picker', 'config-changed']) {
     assert.match(text, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
+  assert.doesNotMatch(text, /force_1x4/);
 });
 
 test('card respects reduced motion and uses namespaced effect classes', async () => {

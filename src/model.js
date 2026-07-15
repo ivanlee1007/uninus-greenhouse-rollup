@@ -17,7 +17,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   subtitle_entity: '',
   subtitle_attribute: '',
   theme: 'dark',
-  force_1x4: false,
+  items_per_row: 2,
   animation: true,
   unit: '秒',
   status_idle_color: '#8798a2',
@@ -26,6 +26,8 @@ export const DEFAULT_CONFIG = Object.freeze({
   open_color: '#ffd54a',
   background_color: '',
 });
+
+export const GRID_OPTIONS = Object.freeze({ columns: 'full', min_columns: 6 });
 
 export function isValidColor(value) {
   return typeof value === 'string' && COLOR_PATTERN.test(value.trim()) && !/url|javascript|expression/i.test(value);
@@ -48,7 +50,8 @@ function normalizeFace(input, key) {
 }
 
 export function normalizeConfig(raw = {}) {
-  const config = raw && typeof raw === 'object' ? raw : {};
+  const input = raw && typeof raw === 'object' ? raw : {};
+  const { force_1x4: legacyForceOneByFour, ...config } = input;
   const suppliedFaces = Array.isArray(config.faces) ? config.faces : [];
   const byKey = new Map(suppliedFaces.map((face) => [face?.key, face]));
   const normalized = {
@@ -56,7 +59,9 @@ export function normalizeConfig(raw = {}) {
     ...config,
     type: DEFAULT_CONFIG.type,
     theme: THEMES.has(config.theme) ? config.theme : DEFAULT_CONFIG.theme,
-    force_1x4: config.force_1x4 === true,
+    items_per_row: Number.isFinite(Number(config.items_per_row))
+      ? Math.max(1, Math.min(4, Math.floor(Number(config.items_per_row))))
+      : legacyForceOneByFour === true ? 4 : DEFAULT_CONFIG.items_per_row,
     animation: config.animation !== false,
     faces: FACE_KEYS.map((key, index) => normalizeFace(byKey.get(key) ?? suppliedFaces[index], key)),
   };
@@ -101,12 +106,10 @@ export function resolveSubtitle(config, states = {}) {
   return String(config.subtitle ?? '');
 }
 
-export function selectLayout({ width = 0, height = 0, forceOneByFour = false } = {}) {
-  if (forceOneByFour) return 'one-by-four';
-  if (width >= 860 && height >= 190) return 'one-by-four';
-  if (width < 360 && height >= width * 1.12) return 'one-column';
-  if (width < 360 && height < 240) return 'compact';
-  return 'two-by-two';
+export function selectLayout({ width = 0, itemsPerRow = DEFAULT_CONFIG.items_per_row } = {}) {
+  const requested = Math.max(1, Math.min(4, Math.floor(Number(itemsPerRow)) || DEFAULT_CONFIG.items_per_row));
+  const available = width <= 0 ? requested : width >= 820 ? 4 : width >= 620 ? 3 : width >= 400 ? 2 : 1;
+  return `columns-${Math.min(requested, available)}`;
 }
 
 export function updateFaceConfig(config, faceKey, property, value) {
