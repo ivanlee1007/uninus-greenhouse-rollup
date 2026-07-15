@@ -1,0 +1,9 @@
+{
+  "title": "UNiNUS Greenhouse Rollup",
+  "config": {
+    "step": {"user": {"title": "Add greenhouse roll-up", "description": "Combine mutually exclusive open and close switches into a Cover with remembered estimated position.", "data": {"name": "Name", "open_entity": "Open switch", "close_entity": "Close switch", "open_travel_time": "Full opening travel time (seconds)", "close_travel_time": "Full closing travel time (seconds)", "reverse_dead_time": "Direction-change safety delay (seconds)"}}},
+    "error": {"same_switch": "Open and close must use different switches.", "switch_in_use": "One of these switches is already used by another roll-up."},
+    "abort": {"already_configured": "This switch pair is already configured."}
+  },
+  "options": {"step": {"init": {"title": "Adjust travel times", "data": {"open_travel_time": "Full opening travel time (seconds)", "close_travel_time": "Full closing travel time (seconds)", "reverse_dead_time": "Direction-change safety delay (seconds)"}}}}
+}

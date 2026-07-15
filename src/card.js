@@ -1,4 +1,4 @@
-import { GRID_OPTIONS, normalizeConfig, resolveFaceState, resolveSubtitle, resolveThemeTokens, selectLayout } from './model.js';
+import { coverServiceForAction, GRID_OPTIONS, normalizeConfig, resolveFaceState, resolveSubtitle, resolveThemeTokens, selectLayout } from './model.js';
 
 const escapeHtml=(value)=>String(value??'').replace(/[&<>"']/g,(char)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 
@@ -14,15 +14,16 @@ export class UninusGreenhouseRollupCard extends HTMLElement {
     .scene{position:relative;height:clamp(96px,24cqw,132px);overflow:hidden;border-radius:11px;background:var(--rollup-frame);border:1px solid color-mix(in srgb,var(--rollup-text) 15%,transparent);box-shadow:inset 0 0 0 3px rgba(0,0,0,.12),inset 0 0 22px rgba(0,0,0,.22)}.opening{position:absolute;left:4px;right:4px;bottom:4px;height:max(0px,calc(var(--open) - 4px));overflow:hidden;background:linear-gradient(145deg,color-mix(in srgb,var(--open-color) 36%,white),var(--open-color));box-shadow:inset 0 0 23px rgba(255,255,220,.15),0 0 20px color-mix(in srgb,var(--open-color) 35%,transparent);transition:height .65s cubic-bezier(.2,.8,.2,1),background .65s}.curtain{position:absolute;left:4px;right:4px;top:4px;height:max(0px,calc(100% - var(--open) - 4px));overflow:hidden;background:linear-gradient(90deg,#1d292f,#3b4c54 28%,#26353c 52%,#43565e 74%,#1b272d);border-bottom:1px solid rgba(255,255,255,.14);transition:height .65s cubic-bezier(.2,.8,.2,1)}.curtain b{position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.07)}.curtain b:first-of-type{left:34%}.curtain b:last-of-type{left:67%}.shine{position:absolute;inset:0 auto 0 -35%;width:30%;transform:skewX(-16deg);background:linear-gradient(90deg,transparent,rgba(255,255,255,.12),transparent)}
     .roller{position:absolute;z-index:5;left:1px;right:1px;bottom:clamp(4px,calc(var(--open) - 5px),calc(100% - 14px));height:11px;display:flex;align-items:center;transition:bottom .65s cubic-bezier(.2,.8,.2,1)}.roller span{flex:1;height:9px;border-radius:999px;border:1px solid rgba(255,240,170,.46);background:repeating-linear-gradient(90deg,#705714 0,var(--face-accent) 5px,#aa7b13 10px,#fff0a0 15px);box-shadow:0 2px 6px rgba(0,0,0,.5),0 0 10px color-mix(in srgb,var(--face-accent) 30%,transparent)}.roller i{width:7px;height:11px;border-radius:3px;background:#adb7ba}.moving.animated .roller span{animation:roll .43s linear infinite}.moving.animated .shine{animation:sweep 1.35s ease-in-out infinite}
     .rollup-air{position:absolute;left:-45%;width:44%;height:2px;border-radius:999px;opacity:0;background:linear-gradient(90deg,transparent,rgba(225,252,255,.95),transparent)}.rollup-air:nth-child(1){bottom:25%}.rollup-air:nth-child(2){bottom:50%;animation-delay:.18s!important}.rollup-air:nth-child(3){bottom:75%;animation-delay:.36s!important}.moving.animated .rollup-air{animation:airflow 1.45s ease-in-out infinite}.ray{position:absolute;top:-20%;width:12px;height:145%;opacity:.23;transform:rotate(20deg);background:linear-gradient(transparent,rgba(255,255,230,.9),transparent)}.ray.one{left:25%}.ray.two{left:68%}
-    .scale{position:absolute;z-index:6;right:5px;color:rgba(255,255,255,.52);font-size:7px;text-shadow:0 1px 2px #000}.scale.top{top:6px}.scale.mid{top:calc(50% - 4px)}.scale.bottom{bottom:5px}.percent{position:absolute;z-index:7;left:7px;bottom:6px;padding:3px 5px;border-radius:6px;background:rgba(0,0,0,.4);color:#fff;font-size:8px;font-weight:900}
+    .scale{position:absolute;z-index:6;right:5px;color:rgba(255,255,255,.52);font-size:7px;text-shadow:0 1px 2px #000}.scale.top{top:6px}.scale.mid{top:calc(50% - 4px)}.scale.bottom{bottom:5px}.percent{position:absolute;z-index:7;left:7px;bottom:6px;padding:3px 5px;border-radius:6px;background:rgba(0,0,0,.4);color:#fff;font-size:8px;font-weight:900}.unknown .scene::after{content:'位置未知';position:absolute;z-index:6;inset:0;display:grid;place-items:center;background:repeating-linear-gradient(135deg,rgba(255,255,255,.035) 0 8px,rgba(0,0,0,.055) 8px 16px);color:rgba(255,255,255,.72);font-size:9px;font-weight:800;letter-spacing:.08em}
     .foot{display:flex;align-items:end;justify-content:space-between;gap:7px;margin-top:8px;text-align:left}.copy{display:grid;min-width:0;gap:2px}.copy strong,.copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.copy strong{font-size:clamp(9px,2.2cqw,11px)}.copy small{color:var(--rollup-muted);font-size:clamp(8px,1.7cqw,9px)}.foot em{color:var(--face-accent);font-size:clamp(10px,2.5cqw,13px);font-style:normal;font-weight:900}
+    .controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin-top:8px}.controls button{min-width:0;padding:6px 4px;border:1px solid color-mix(in srgb,var(--face-accent) 30%,transparent);border-radius:8px;background:color-mix(in srgb,var(--face-accent) 11%,transparent);color:var(--rollup-text);font:inherit;font-size:9px;font-weight:800;cursor:pointer}.controls button:hover{background:color-mix(in srgb,var(--face-accent) 22%,transparent)}.controls button:focus-visible{outline:2px solid var(--face-accent);outline-offset:1px}.controls button:disabled{cursor:not-allowed;opacity:.38}.controls .stop{border-color:color-mix(in srgb,var(--rollup-moving) 35%,transparent)}
     .columns-3 .face,.columns-4 .face{padding:clamp(6px,1cqw,9px)}.columns-3 .face-head,.columns-4 .face-head{grid-template-columns:22px minmax(0,1fr);grid-template-areas:'compass name' 'motion motion';gap:4px;margin-bottom:6px}.columns-3 .compass,.columns-4 .compass{grid-area:compass;width:22px;height:22px}.columns-3 .name,.columns-4 .name{grid-area:name}.columns-3 .motion,.columns-4 .motion{grid-area:motion;justify-content:center;padding:4px 6px}.columns-3 .scene,.columns-4 .scene{height:clamp(64px,12cqw,88px)}.columns-3 .foot,.columns-4 .foot{display:grid;margin-top:6px}.columns-3 .foot em,.columns-4 .foot em{display:none}
     .columns-1 .faces{gap:8px}.columns-1 .scene{height:clamp(72px,28cqw,112px)}.columns-1 .face{padding:9px}.columns-1 .face-head{margin-bottom:6px}.columns-1 .foot{margin-top:6px}
     @keyframes roll{to{background-position:30px 0}}@keyframes sweep{0%{left:-40%;opacity:0}35%{opacity:1}100%{left:120%;opacity:0}}@keyframes airflow{0%{left:-45%;opacity:0}25%{opacity:.9}100%{left:110%;opacity:0}}@keyframes pulse{0%,100%{opacity:.55;transform:scale(.85)}50%{opacity:1;transform:scale(1.2)}}
     @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
   `;
 
-  constructor(){super();this.attachShadow({mode:'open'});this._config=normalizeConfig({});this._layout='columns-2';this._observer=null;this._lastRect={width:0,height:0};this._hass=null}
+  constructor(){super();this.attachShadow({mode:'open'});this._config=normalizeConfig({});this._layout='columns-2';this._observer=null;this._lastRect={width:0,height:0};this._hass=null;this._pendingActions=new Map()}
   set hass(value){this._hass=value;this._render()}
   get hass(){return this._hass}
   setConfig(config){this._config=normalizeConfig(config);this._measure();this._render()}
@@ -32,6 +33,17 @@ export class UninusGreenhouseRollupCard extends HTMLElement {
   _measure(){const r=this.getBoundingClientRect?.();if(r)this._setLayout(r.width,r.height)}
   _setLayout(width,height){this._lastRect={width,height};const next=selectLayout({width,itemsPerRow:this._config.items_per_row});if(next!==this._layout){this._layout=next;this._render()}}
   _moreInfo(entityId){if(!entityId)return;this.dispatchEvent(new CustomEvent('hass-more-info',{detail:{entityId},bubbles:true,composed:true}))}
+  async _control(event){
+    event.stopPropagation();
+    const button=event.currentTarget;const entityId=button?.dataset?.entity;const action=button?.dataset?.action;const service=coverServiceForAction(action);
+    if(!entityId||!service||!this.hass?.callService)return;
+    const pending=this._pendingActions.get(entityId)??new Set();
+    if((action==='stop'&&pending.has('stop'))||(action!=='stop'&&pending.size))return;
+    pending.add(action);this._pendingActions.set(entityId,pending);this._render();
+    try{await this.hass.callService('cover',service,{entity_id:entityId})}
+    catch(error){this.dispatchEvent(new CustomEvent('hass-notification',{detail:{message:`${this._config.title}控制失敗：${error?.message??error}`},bubbles:true,composed:true}))}
+    finally{pending.delete(action);if(!pending.size)this._pendingActions.delete(entityId);this._render()}
+  }
 
   _render(){
     if(!this.shadowRoot)return;
@@ -43,18 +55,27 @@ export class UninusGreenhouseRollupCard extends HTMLElement {
       <section class="faces">${this._config.faces.map((face)=>this._renderFace(face)).join('')}</section>
     </div>`;
     this.shadowRoot.querySelectorAll('.face').forEach((element)=>element.addEventListener('click',()=>this._moreInfo(element.dataset.entity)));
+    this.shadowRoot.querySelectorAll('.controls button').forEach((button)=>button.addEventListener('click',(event)=>this._control(event)));
   }
 
   _renderFace(face){
-    const state=resolveFaceState(face,this.hass.states);const accent=face.accent_color||this._config.open_color;const status=state.moving?this._config.status_moving_color:this._config.status_idle_color;const light=18+state.percent*.48;const open=face.accent_color||`hsl(43 96% ${light}%)`;const cls=`face ${state.moving?'moving':'idle'} ${this._config.animation?'animated':''}`;
-    return `<article class="${escapeHtml(cls)}" data-entity="${escapeHtml(face.entity)}" style="--open:${state.percent}%;--face-accent:${escapeHtml(accent)};--status-color:${escapeHtml(status)};--open-color:${escapeHtml(open)}">
+    const state=resolveFaceState(face,this.hass.states);const visualPercent=state.positionKnown?state.percent:50;const accent=face.accent_color||this._config.open_color;const status=state.commandState==='conflict'?'#ff6b6b':state.moving?this._config.status_moving_color:this._config.status_idle_color;const light=18+visualPercent*.48;const open=face.accent_color||`hsl(43 96% ${light}%)`;const cls=`face ${state.moving?'moving':'idle'} ${state.positionKnown?'':'unknown'} ${state.commandState==='conflict'?'conflict':''} ${this._config.animation?'animated':''}`;
+    const detail=state.integration?`${state.commandLabel} · ${state.confidenceLabel}`:state.available?`${Math.round(state.value)} ${this._config.unit} / ${state.maximum} ${this._config.unit}`:face.entity||'尚未設定實體';
+    const pending=this._pendingActions.get(state.controlEntity)??new Set();const directionDisabled=!state.available||state.commandState==='conflict'||pending.size>0;const stopDisabled=!state.available||pending.has('stop');
+    const controls=state.integration?`<div class="controls" aria-label="${escapeHtml(`${face.name}捲揚控制`)}">
+      <button type="button" data-action="open" data-entity="${escapeHtml(state.controlEntity)}" ${directionDisabled?'disabled':''} aria-label="開啟${escapeHtml(face.name)}捲揚">▲ 開啟</button>
+      <button type="button" class="stop" data-action="stop" data-entity="${escapeHtml(state.controlEntity)}" ${stopDisabled?'disabled':''} aria-label="停止${escapeHtml(face.name)}捲揚">■ 停止</button>
+      <button type="button" data-action="close" data-entity="${escapeHtml(state.controlEntity)}" ${directionDisabled?'disabled':''} aria-label="關閉${escapeHtml(face.name)}捲揚">▼ 關閉</button>
+    </div>`:'';
+    return `<article class="${escapeHtml(cls)}" data-entity="${escapeHtml(state.controlEntity)}" style="--open:${visualPercent}%;--face-accent:${escapeHtml(accent)};--status-color:${escapeHtml(status)};--open-color:${escapeHtml(open)}">
       <div class="face-head"><span class="compass">${escapeHtml(face.compass)}</span><span class="name">${escapeHtml(face.name)}捲揚</span><span class="motion"><i></i>${escapeHtml(state.motionLabel)}</span></div>
       <div class="scene" role="img" aria-label="${escapeHtml(`${face.name}捲揚，${state.positionLabel}，${state.motionLabel}`)}">
         <div class="opening"><b class="ray one"></b><b class="ray two"></b><i class="rollup-air"></i><i class="rollup-air"></i><i class="rollup-air"></i></div>
         <div class="curtain"><i class="shine"></i><b></b><b></b></div><div class="roller"><i></i><span></span><i></i></div>
-        <span class="scale top">100</span><span class="scale mid">50</span><span class="scale bottom">0</span><strong class="percent">${state.available?`${state.percent}%`:'—'}</strong>
+        <span class="scale top">100</span><span class="scale mid">50</span><span class="scale bottom">0</span><strong class="percent">${state.positionKnown?`${state.percent}%`:'—'}</strong>
       </div>
-      <footer class="foot"><span class="copy"><strong>${escapeHtml(state.positionLabel)}</strong><small>${escapeHtml(state.available?`${Math.round(state.value)} ${this._config.unit} / ${state.maximum} ${this._config.unit}`:face.entity||'尚未設定實體')}</small></span><em>${state.available?`${state.percent}%`:'N/A'}</em></footer>
+      <footer class="foot"><span class="copy"><strong>${escapeHtml(state.positionLabel)}</strong><small>${escapeHtml(detail)}</small></span><em>${state.positionKnown?`${state.percent}%`:'N/A'}</em></footer>
+      ${controls}
     </article>`;
   }
 

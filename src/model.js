@@ -38,11 +38,15 @@ function normalizeFace(input, key) {
   const value = input && typeof input === 'object' ? input : {};
   return {
     ...base,
+    cover_entity: '',
     entity: '',
     motion_entity: '',
     max_entity: '',
     ...value,
     key,
+    entity_mode: value.entity_mode === 'cover_entity' || value.entity_mode === 'position_entity'
+      ? value.entity_mode
+      : value.cover_entity ? 'cover_entity' : 'position_entity',
     name: String(value.name ?? base.name),
     max_value: Number.isFinite(Number(value.max_value)) && Number(value.max_value) > 0 ? Number(value.max_value) : 120,
     accent_color: isValidColor(value.accent_color) ? value.accent_color : '',
@@ -78,6 +82,14 @@ function numericState(entityId, states) {
 }
 
 export function resolveFaceState(face, states = {}) {
+  const cover = face.cover_entity ? states?.[face.cover_entity] : undefined;
+  const integrationMode = face.entity_mode === 'cover_entity' || (!face.entity_mode && face.cover_entity);
+  if (integrationMode) {
+    return resolveIntegrationCoverState(
+      face,
+      cover ?? { state: 'unavailable', attributes: {} },
+    );
+  }
   const raw = numericState(face.entity, states);
   const maxFromEntity = numericState(face.max_entity, states);
   const maximum = Number.isFinite(maxFromEntity) && maxFromEntity > 0
@@ -93,7 +105,85 @@ export function resolveFaceState(face, states = {}) {
   const motion = !moving ? 'idle' : direction === 'closing' ? 'closing' : direction === 'opening' ? 'opening' : 'moving';
   const motionLabel = motion === 'idle' ? '靜止' : motion === 'opening' ? '開啟中' : motion === 'closing' ? '關閉中' : '捲動中';
   const positionLabel = !available ? '位置資料不可用' : percent <= 0 ? '全閉' : percent >= 100 ? '全開' : `局部開啟 ${percent}%`;
-  return { available, value, maximum, percent, moving, motion, motionLabel, positionLabel };
+  return {
+    available,
+    value,
+    maximum,
+    percent,
+    moving,
+    motion,
+    motionLabel,
+    positionLabel,
+    positionKnown: available,
+    integration: false,
+    controlEntity: face.entity,
+    confidence: '',
+    confidenceLabel: '',
+    commandState: motion,
+    commandLabel: motionLabel,
+  };
+}
+
+function resolveIntegrationCoverState(face, cover) {
+  const entityState = String(cover.state ?? '').toLowerCase();
+  const available = !['unavailable', 'unknown'].includes(entityState);
+  const positionValue = cover.attributes?.current_position;
+  const rawPosition = positionValue === null || positionValue === undefined || positionValue === ''
+    ? Number.NaN
+    : Number(positionValue);
+  const positionKnown = Number.isFinite(rawPosition);
+  const percent = positionKnown ? Math.max(0, Math.min(100, Math.round(rawPosition))) : null;
+  const commandState = String(cover.attributes?.command_state ?? entityState).toLowerCase();
+  const confidence = String(cover.attributes?.position_confidence ?? 'unknown').toLowerCase();
+  const motion = entityState === 'opening' && (!positionKnown || percent < 100)
+    ? 'opening'
+    : entityState === 'closing' && (!positionKnown || percent > 0) ? 'closing' : 'idle';
+  const moving = motion !== 'idle';
+  const motionLabel = commandState === 'conflict'
+    ? '控制衝突'
+    : commandState === 'opening_timer' && percent >= 100
+      ? '已全開'
+      : commandState === 'closing_timer' && percent <= 0
+        ? '已全關'
+        : motion === 'opening' ? '開啟中' : motion === 'closing' ? '關閉中' : '靜止';
+  const commandLabel = commandState === 'opening_timer'
+    ? '開啟計時中'
+    : commandState === 'closing_timer'
+      ? '關閉計時中'
+      : commandState === 'opening'
+        ? '開啟命令中'
+        : commandState === 'closing'
+          ? '關閉命令中'
+          : commandState === 'conflict'
+            ? '開關衝突'
+            : commandState === 'unavailable' ? '控制不可用' : '沒有控制命令';
+  const confidenceLabel = confidence === 'calibrated'
+    ? '端點已校正'
+    : confidence === 'estimated' ? '估算位置' : '位置未校正';
+  const positionLabel = !available
+    ? '位置資料不可用'
+    : !positionKnown ? '位置尚未校正' : percent <= 0 ? '全閉' : percent >= 100 ? '全開' : `估算開啟 ${percent}%`;
+  return {
+    available,
+    value: positionKnown ? percent : null,
+    maximum: 100,
+    percent,
+    moving,
+    motion,
+    motionLabel,
+    positionLabel,
+    positionKnown,
+    integration: true,
+    controlEntity: face.cover_entity,
+    confidence,
+    confidenceLabel,
+    commandState,
+    commandLabel,
+  };
+}
+
+export function coverServiceForAction(action) {
+  return ({ open: 'open_cover', stop: 'stop_cover', close: 'close_cover' })[action] ?? '';
 }
 
 export function resolveSubtitle(config, states = {}) {

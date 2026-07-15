@@ -13,9 +13,32 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
       - run: npm ci
+      - run: uv run --with 'homeassistant==2026.7.2' python -m unittest discover -s tests_python -v
+      - run: python -m compileall -q custom_components
       - run: npm test
       - run: npm run build
       - run: node --check uninus-greenhouse-rollup-card.js
-      - run: git diff --exit-code -- uninus-greenhouse-rollup-card.js
+      - run: git diff --exit-code -- uninus-greenhouse-rollup-card.js custom_components/uninus_greenhouse_rollup/www/uninus-greenhouse-rollup-card.js
       - run: npm audit --audit-level=high
+
+  hassfest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: home-assistant/actions/hassfest@f4ca6f671bd429efb108c0f2fa0ae8af0215986c
+
+  hacs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hacs/action@1ebf01c408f29afcb6406bd431bc98fd8cbb15aa
+        with:
+          category: integration
+          ignore: brands

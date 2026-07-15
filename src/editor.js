@@ -41,7 +41,9 @@ export class UninusGreenhouseRollupCardEditor extends HTMLElement {
       <section class="section"><h3>四面捲揚設定</h3><div class="faces">${c.faces.map((face,index)=>`<details class="face" ${index===0?'open':''}><summary><span>${escapeHtml(face.compass)}・${escapeHtml(face.name)}</span><span>›</span></summary><div class="body"><div class="grid">
         <div class="field"><label>顯示名稱</label><input data-face="${face.key}" data-property="name" value="${escapeHtml(face.name)}"></div>
         ${this._color('accent_color','此面強調色',face.accent_color||c.open_color,face.key)}
-        ${this._entity('entity','位置 Entity',face.entity,face.key)}${this._entity('motion_entity','捲動狀態 Entity',face.motion_entity,face.key)}
+        <div class="field"><label>資料模式</label><select data-face="${face.key}" data-property="entity_mode"><option value="cover_entity" ${face.entity_mode==='cover_entity'?'selected':''}>Integration Cover</option><option value="position_entity" ${face.entity_mode==='position_entity'?'selected':''}>舊版位置 Entity</option></select></div>
+        ${this._entity('cover_entity','Integration Cover Entity（建議）',face.cover_entity,face.key)}
+        ${this._entity('entity','舊版位置 Entity',face.entity,face.key)}${this._entity('motion_entity','舊版捲動狀態 Entity',face.motion_entity,face.key)}
         ${this._entity('max_entity','最大刻度 Entity（選填）',face.max_entity,face.key)}
         <div class="field"><label>固定最大刻度</label><input type="number" min="1" step="1" data-number="true" data-face="${face.key}" data-property="max_value" value="${face.max_value}"></div>
       </div></div></details>`).join('')}</div></section>

@@ -12,6 +12,7 @@ import {
   resolveThemeTokens,
   isValidColor,
   GRID_OPTIONS,
+  coverServiceForAction,
 } from '../src/model.js';
 
 test('normalizeConfig creates four ordered faces and preserves explicit false', () => {
@@ -22,6 +23,21 @@ test('normalizeConfig creates four ordered faces and preserves explicit false', 
   assert.equal(config.theme, 'light');
   assert.equal(config.items_per_row, 3);
   assert.equal(config.faces[1].name, '南側');
+});
+
+test('normalizeConfig preserves legacy mode and explicitly selects integration mode', () => {
+  const legacy = normalizeConfig({ faces: [{ key: 'east', entity: 'sensor.east' }] });
+  assert.equal(legacy.faces[0].entity_mode, 'position_entity');
+
+  const inferred = normalizeConfig({ faces: [{ key: 'east', cover_entity: 'cover.east' }] });
+  assert.equal(inferred.faces[0].entity_mode, 'cover_entity');
+
+  const explicitLegacy = normalizeConfig({ faces: [{ key: 'east', entity_mode: 'position_entity', cover_entity: 'cover.east', entity: 'sensor.east' }] });
+  assert.equal(explicitLegacy.faces[0].entity_mode, 'position_entity');
+  assert.equal(resolveFaceState(explicitLegacy.faces[0], {
+    'cover.east': { state: 'opening', attributes: { current_position: 80 } },
+    'sensor.east': { state: '10', attributes: {} },
+  }).integration, false);
 });
 
 test('normalizeConfig clamps items per row and removes the legacy force flag', () => {
@@ -69,6 +85,97 @@ test('resolveFaceState uses max entity when available and preserves zero', () =>
   assert.equal(result.value, 0);
   assert.equal(result.maximum, 200);
   assert.equal(result.positionLabel, '全閉');
+});
+
+test('resolveFaceState prefers integration cover position and command metadata', () => {
+  const states = {
+    'cover.east_rollup': {
+      state: 'opening',
+      attributes: {
+        current_position: 42,
+        position_confidence: 'estimated',
+        command_state: 'opening',
+        position_is_estimated: true,
+      },
+    },
+    'sensor.legacy': { state: '99', attributes: {} },
+  };
+  const result = resolveFaceState({ cover_entity: 'cover.east_rollup', entity: 'sensor.legacy' }, states);
+  assert.equal(result.integration, true);
+  assert.equal(result.controlEntity, 'cover.east_rollup');
+  assert.equal(result.percent, 42);
+  assert.equal(result.motion, 'opening');
+  assert.equal(result.confidence, 'estimated');
+  assert.equal(result.confidenceLabel, '估算位置');
+  assert.equal(result.commandLabel, '開啟命令中');
+});
+
+test('integration cover stops motion animation at endpoint while relay timer remains on', () => {
+  const states = {
+    'cover.east_rollup': {
+      state: 'open',
+      attributes: { current_position: 100, position_confidence: 'calibrated', command_state: 'opening_timer' },
+    },
+  };
+  const result = resolveFaceState({ cover_entity: 'cover.east_rollup' }, states);
+  assert.equal(result.percent, 100);
+  assert.equal(result.moving, false);
+  assert.equal(result.motionLabel, '已全開');
+  assert.equal(result.commandLabel, '開啟計時中');
+  assert.equal(result.confidenceLabel, '端點已校正');
+});
+
+test('integration cover safely reports unknown and unavailable positions', () => {
+  const unknown = resolveFaceState(
+    { cover_entity: 'cover.unknown' },
+    { 'cover.unknown': { state: 'opening', attributes: { command_state: 'opening', position_confidence: 'unknown' } } },
+  );
+  assert.equal(unknown.available, true);
+  assert.equal(unknown.positionKnown, false);
+  assert.equal(unknown.positionLabel, '位置尚未校正');
+
+  const unavailable = resolveFaceState(
+    { cover_entity: 'cover.offline' },
+    { 'cover.offline': { state: 'unavailable', attributes: {} } },
+  );
+  assert.equal(unavailable.available, false);
+});
+
+test('explicit cover mode never falls back to legacy when the cover entity is missing', () => {
+  const state = resolveFaceState({
+    key: 'east',
+    entity_mode: 'cover_entity',
+    cover_entity: 'cover.missing',
+    entity: 'sensor.legacy',
+    max_value: 100,
+  }, {
+    'sensor.legacy': { state: '64', attributes: {} },
+  });
+
+  assert.equal(state.integration, true);
+  assert.equal(state.available, false);
+  assert.equal(state.positionKnown, false);
+  assert.equal(state.controlEntity, 'cover.missing');
+});
+
+test('null integration position remains unknown instead of becoming closed', () => {
+  const state = resolveFaceState({ cover_entity: 'cover.east' }, {
+    'cover.east': {
+      state: 'open',
+      attributes: { current_position: null, position_confidence: 'unknown' },
+    },
+  });
+
+  assert.equal(state.positionKnown, false);
+  assert.equal(state.percent, null);
+  assert.notEqual(state.positionLabel, '全閉');
+});
+
+test('coverServiceForAction maps only supported safe controls', () => {
+  assert.equal(coverServiceForAction('open'), 'open_cover');
+  assert.equal(coverServiceForAction('stop'), 'stop_cover');
+  assert.equal(coverServiceForAction('close'), 'close_cover');
+  assert.equal(coverServiceForAction('delete'), '');
 });
 
 test('resolveSubtitle prefers configured attribute and preserves numeric zero', () => {
