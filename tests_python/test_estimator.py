@@ -90,6 +90,11 @@ class RollupEstimatorTest(unittest.TestCase):
     def test_malformed_snapshot_falls_back_to_unknown(self):
         for snapshot in (
             {"position": "not-a-number", "confidence": CONFIDENCE_ESTIMATED},
+            {"position": "42", "confidence": CONFIDENCE_ESTIMATED},
+            {"position": True, "confidence": CONFIDENCE_CALIBRATED},
+            {"position": 150, "confidence": CONFIDENCE_CALIBRATED},
+            {"position": -20, "confidence": CONFIDENCE_CALIBRATED},
+            {"position": [], "confidence": CONFIDENCE_ESTIMATED},
             {"position": float("nan"), "confidence": CONFIDENCE_CALIBRATED},
             {"position": 42, "confidence": "bogus"},
         ):

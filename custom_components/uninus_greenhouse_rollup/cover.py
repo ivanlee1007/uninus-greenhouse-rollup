@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from datetime import timedelta
 import logging
 import time
@@ -88,6 +89,7 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         self._command_lock = asyncio.Lock()
         self._command_generation = 0
         self._conflict_stop_pending = False
+        self._conflict_stop_task: asyncio.Task[None] | None = None
         self._attr_unique_id = entry.entry_id
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
@@ -139,7 +141,9 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
             and not self._conflict_stop_pending
         ):
             self._conflict_stop_pending = True
-            self.hass.async_create_task(self._async_fail_safe_stop())
+            self._conflict_stop_task = self.hass.async_create_task(
+                self._async_fail_safe_stop()
+            )
 
     @callback
     def _handle_tick(self, _now: Any) -> None:
@@ -239,14 +243,23 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
     async def async_will_remove_from_hass(self) -> None:
         """Leave both actuators in a safe state on unload or reload."""
         self._command_generation += 1
-        open_state = self.hass.states.get(self._open_entity)
-        close_state = self.hass.states.get(self._close_entity)
-        if (open_state and open_state.state == STATE_ON) or (
-            close_state and close_state.state == STATE_ON
-        ):
+        conflict_task = self._conflict_stop_task
+        self._conflict_stop_task = None
+        if conflict_task is not None:
+            if not conflict_task.done():
+                conflict_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await conflict_task
+        stop_error: Exception | None = None
+        try:
             async with self._command_lock:
                 await self._async_turn_both_off()
-        await super().async_will_remove_from_hass()
+        except Exception as error:
+            stop_error = error
+        finally:
+            await super().async_will_remove_from_hass()
+        if stop_error is not None:
+            raise stop_error
 
     async def _async_run_direction(self, target_entity: str) -> None:
         self._command_generation += 1
@@ -270,14 +283,9 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
                 raise
 
     async def _async_stop_active_relays_on_startup(self) -> None:
-        """Never resume a stale relay command after HA was offline."""
-        open_state = self.hass.states.get(self._open_entity)
-        close_state = self.hass.states.get(self._close_entity)
-        if (open_state and open_state.state == STATE_ON) or (
-            close_state and close_state.state == STATE_ON
-        ):
-            async with self._command_lock:
-                await self._async_turn_both_off()
+        """Never resume a stale or unverifiable relay command after HA was offline."""
+        async with self._command_lock:
+            await self._async_turn_both_off()
 
     async def _async_fail_safe_stop(self) -> None:
         self._command_generation += 1
@@ -288,6 +296,8 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
             _LOGGER.exception("Failed to stop conflicting greenhouse roll-up relays")
         finally:
             self._conflict_stop_pending = False
+            if self._conflict_stop_task is asyncio.current_task():
+                self._conflict_stop_task = None
 
     async def _async_turn_both_off(self) -> None:
         first_error: Exception | None = None

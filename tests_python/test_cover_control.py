@@ -163,9 +163,24 @@ class CoverControlTest(IsolatedAsyncioTestCase):
         )
         self.assertFalse(self.cover._conflict_stop_pending)
 
-    async def test_startup_with_an_active_relay_stops_both_before_sync(self):
-        self.states["switch.east_open"].state = "on"
+    async def test_startup_always_stops_both_relays_even_when_states_are_missing(self):
+        self.states.clear()
         await self.cover._async_stop_active_relays_on_startup()
+        self.assertEqual(
+            self._ids(self.services.async_call.await_args_list),
+            ["switch.east_open", "switch.east_close"],
+        )
+
+    async def test_unload_always_stops_both_and_cancels_conflict_task(self):
+        self.states.clear()
+        pending = asyncio.create_task(asyncio.sleep(60))
+        self.cover._conflict_stop_task = pending
+        with patch(
+            "homeassistant.helpers.entity.Entity.async_will_remove_from_hass",
+            new=AsyncMock(),
+        ):
+            await self.cover.async_will_remove_from_hass()
+        self.assertTrue(pending.cancelled())
         self.assertEqual(
             self._ids(self.services.async_call.await_args_list),
             ["switch.east_open", "switch.east_close"],

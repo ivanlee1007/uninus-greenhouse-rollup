@@ -64,6 +64,18 @@ class RollupEstimator:
             return None
         return max(0.0, min(100.0, numeric))
 
+    @staticmethod
+    def _restore_position(value: Any) -> float | None:
+        """Validate persisted data without coercing corruption into an endpoint."""
+        if value is None:
+            return None
+        if type(value) not in (int, float):
+            return None
+        numeric = float(value)
+        if not math.isfinite(numeric) or not 0.0 <= numeric <= 100.0:
+            return None
+        return numeric
+
     @classmethod
     def from_snapshot(
         cls,
@@ -74,9 +86,10 @@ class RollupEstimator:
         """Restore only durable position and confidence information."""
         snapshot = snapshot or {}
         confidence = snapshot.get("confidence", CONFIDENCE_UNKNOWN)
-        position = cls._normalize_position(snapshot.get("position"))
+        raw_position = snapshot.get("position")
+        position = cls._restore_position(raw_position)
         if confidence not in _VALID_CONFIDENCE or (
-            snapshot.get("position") is not None and position is None
+            raw_position is not None and position is None
         ):
             return cls(open_travel_time, close_travel_time)
         return cls(

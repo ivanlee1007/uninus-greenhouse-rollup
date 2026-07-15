@@ -1,6 +1,6 @@
 {
   "name": "uninus-greenhouse-rollup",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Home Assistant integration and Lovelace card for remembered timed greenhouse roll-up covers",
   "type": "module",
   "main": "uninus-greenhouse-rollup-card.js",
