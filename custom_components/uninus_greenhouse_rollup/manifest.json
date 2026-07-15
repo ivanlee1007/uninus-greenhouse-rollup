@@ -3,11 +3,11 @@
   "name": "UNiNUS Greenhouse Rollup",
   "codeowners": ["@ivanlee1007"],
   "config_flow": true,
+  "dependencies": ["http"],
   "documentation": "https://github.com/ivanlee1007/uninus-greenhouse-rollup",
-  "issue_tracker": "https://github.com/ivanlee1007/uninus-greenhouse-rollup/issues",
   "integration_type": "helper",
   "iot_class": "calculated",
+  "issue_tracker": "https://github.com/ivanlee1007/uninus-greenhouse-rollup/issues",
   "requirements": [],
-  "dependencies": ["http"],
   "version": "2.0.0"
 }
