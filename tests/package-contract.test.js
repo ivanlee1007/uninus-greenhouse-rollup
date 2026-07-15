@@ -13,11 +13,12 @@ test('HACS filename, package entry and runtime artifact agree', async () => {
   assert.equal(pkg.main, 'uninus-greenhouse-rollup-card.js');
 });
 
-test('README documents the visual editor and adaptive items per row', async () => {
+test('README documents the visual editor and exact items per row', async () => {
   const readme = await readFile(new URL('README.md', root), 'utf8');
   assert.match(readme, /視覺化設定/);
   assert.match(readme, /每列捲揚數量/);
   assert.match(readme, /最多 4/);
-  assert.match(readme, /ResizeObserver/);
+  assert.match(readme, /items_per_row/);
+  assert.match(readme, /固定產生 1～4 欄/);
   assert.doesNotMatch(readme, /force_1x4/);
 });

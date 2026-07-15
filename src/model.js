@@ -106,10 +106,9 @@ export function resolveSubtitle(config, states = {}) {
   return String(config.subtitle ?? '');
 }
 
-export function selectLayout({ width = 0, itemsPerRow = DEFAULT_CONFIG.items_per_row } = {}) {
+export function selectLayout({ itemsPerRow = DEFAULT_CONFIG.items_per_row } = {}) {
   const requested = Math.max(1, Math.min(4, Math.floor(Number(itemsPerRow)) || DEFAULT_CONFIG.items_per_row));
-  const available = width <= 0 ? requested : width >= 820 ? 4 : width >= 620 ? 3 : width >= 400 ? 2 : 1;
-  return `columns-${Math.min(requested, available)}`;
+  return `columns-${requested}`;
 }
 
 export function updateFaceConfig(config, faceKey, property, value) {

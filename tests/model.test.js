@@ -77,32 +77,19 @@ test('resolveSubtitle prefers configured attribute and preserves numeric zero', 
   assert.equal(resolveSubtitle({ subtitle: 'fallback' }, states), 'fallback');
 });
 
-test('selectLayout respects the configured maximum items per row', () => {
-  assert.equal(selectLayout({ width: 920, itemsPerRow: 4 }), 'columns-4');
-  assert.equal(selectLayout({ width: 920, itemsPerRow: 3 }), 'columns-3');
-  assert.equal(selectLayout({ width: 920, itemsPerRow: 2 }), 'columns-2');
-  assert.equal(selectLayout({ width: 920, itemsPerRow: 1 }), 'columns-1');
+test('selectLayout uses the configured items per row at every card width', () => {
+  for (const width of [0, 320, 520, 700, 920]) {
+    assert.equal(selectLayout({ width, itemsPerRow: 4 }), 'columns-4');
+    assert.equal(selectLayout({ width, itemsPerRow: 3 }), 'columns-3');
+    assert.equal(selectLayout({ width, itemsPerRow: 2 }), 'columns-2');
+    assert.equal(selectLayout({ width, itemsPerRow: 1 }), 'columns-1');
+  }
 });
 
-test('selectLayout keeps the configured columns before the card has a measurable width', () => {
-  assert.equal(selectLayout({ width: 0, itemsPerRow: 4 }), 'columns-4');
-  assert.equal(selectLayout({ itemsPerRow: 3 }), 'columns-3');
-});
-
-test('selectLayout reduces columns responsively without exceeding the user setting', () => {
-  assert.equal(selectLayout({ width: 700, itemsPerRow: 4 }), 'columns-3');
-  assert.equal(selectLayout({ width: 520, itemsPerRow: 4 }), 'columns-2');
-  assert.equal(selectLayout({ width: 320, itemsPerRow: 4 }), 'columns-1');
-  assert.equal(selectLayout({ width: 700, itemsPerRow: 2 }), 'columns-2');
-});
-
-test('selectLayout locks responsive breakpoint boundaries', () => {
-  assert.equal(selectLayout({ width: 399, itemsPerRow: 4 }), 'columns-1');
-  assert.equal(selectLayout({ width: 400, itemsPerRow: 4 }), 'columns-2');
-  assert.equal(selectLayout({ width: 619, itemsPerRow: 4 }), 'columns-2');
-  assert.equal(selectLayout({ width: 620, itemsPerRow: 4 }), 'columns-3');
-  assert.equal(selectLayout({ width: 819, itemsPerRow: 4 }), 'columns-3');
-  assert.equal(selectLayout({ width: 820, itemsPerRow: 4 }), 'columns-4');
+test('selectLayout clamps invalid configured column counts', () => {
+  assert.equal(selectLayout({ width: 320, itemsPerRow: 9 }), 'columns-4');
+  assert.equal(selectLayout({ width: 920, itemsPerRow: -2 }), 'columns-1');
+  assert.equal(selectLayout({ width: 520, itemsPerRow: 'invalid' }), 'columns-2');
 });
 
 test('grid options use intrinsic height so responsive rows are never clipped', () => {
