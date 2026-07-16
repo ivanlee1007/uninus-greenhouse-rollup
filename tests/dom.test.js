@@ -16,7 +16,10 @@ Object.assign(globalThis, {
 });
 
 const { UninusGreenhouseRollupCard } = await import('../src/card.js');
+const { UninusGreenhouseRollupCardEditor } = await import('../src/editor.js');
 customElements.define('uninus-greenhouse-rollup-test-card', UninusGreenhouseRollupCard);
+customElements.define('ha-entity-picker', class extends HTMLElement {});
+customElements.define('uninus-greenhouse-rollup-test-editor', UninusGreenhouseRollupCardEditor);
 
 function createCard(coverState, callService) {
   const calls = [];
@@ -137,4 +140,21 @@ test('service rejection is handled and emits a Home Assistant notification', asy
   assert.match(message, /控制失敗/);
   assert.equal(card.shadowRoot.querySelector('[data-action="open"]').disabled, false);
   card.remove();
+});
+
+test('entity pickers render each field label only once', () => {
+  const editor = window.document.createElement('uninus-greenhouse-rollup-test-editor');
+  window.document.body.append(editor);
+  editor.setConfig({});
+  editor.hass = { states: {} };
+
+  const pickers = [...editor.shadowRoot.querySelectorAll('ha-entity-picker')];
+  assert.ok(pickers.length > 0);
+  for (const picker of pickers) {
+    const outerLabels = [...picker.parentElement.children]
+      .filter((element) => element.localName === 'label');
+    assert.equal(outerLabels.length, 0, `${picker.label} has a duplicate outer label`);
+    assert.ok(picker.label);
+  }
+  editor.remove();
 });

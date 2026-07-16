@@ -63,7 +63,7 @@
 Integration 會提供內建前端檔案。於「設定 → 儀表板 → 右上角選單 → 資源」新增 JavaScript Module：
 
 ```text
-/uninus-greenhouse-rollup/uninus-greenhouse-rollup-card.js?v=2.0.3
+/uninus-greenhouse-rollup/uninus-greenhouse-rollup-card.js?v=2.0.4
 ```
 
 之後重新整理瀏覽器。新增卡片時可搜尋 **UNiNUS Greenhouse Rollup Card**，並使用**視覺化設定**。

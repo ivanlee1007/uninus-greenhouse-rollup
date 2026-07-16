@@ -20,7 +20,7 @@ export class UninusGreenhouseRollupCardEditor extends HTMLElement {
     this.dispatchEvent(new CustomEvent('config-changed',{detail:{config:this._config},bubbles:true,composed:true}));
   }
   _text(property,label,value,full=false,extra=''){return `<div class="field ${full?'full':''}"><label>${escapeHtml(label)}</label><input data-property="${property}" value="${escapeHtml(value)}" ${extra}></div>`}
-  _entity(property,label,value,face=''){return `<div class="field"><label>${escapeHtml(label)}</label>${customElements.get('ha-entity-picker')?`<ha-entity-picker data-property="${property}" data-face="${face}" data-value="${escapeHtml(value)}" data-label="${escapeHtml(label)}" allow-custom-entity show-entity-id></ha-entity-picker>`:`<input data-property="${property}" data-face="${face}" value="${escapeHtml(value)}" placeholder="sensor.example">`}</div>`}
+  _entity(property,label,value,face=''){return customElements.get('ha-entity-picker')?`<div class="field"><ha-entity-picker data-property="${property}" data-face="${face}" data-value="${escapeHtml(value)}" data-label="${escapeHtml(label)}" allow-custom-entity show-entity-id></ha-entity-picker></div>`:`<div class="field"><label>${escapeHtml(label)}</label><input data-property="${property}" data-face="${face}" value="${escapeHtml(value)}" placeholder="sensor.example"></div>`}
   _color(property,label,value,face=''){return `<div class="field"><label>${escapeHtml(label)}</label><input type="color" data-property="${property}" data-face="${face}" value="${escapeHtml(value||'#ffd54a')}"></div>`}
   _render(){
     if(!this.shadowRoot)return;const c=this._config;
