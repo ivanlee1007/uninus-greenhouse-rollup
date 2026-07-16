@@ -158,3 +158,135 @@ test('entity pickers render each field label only once', () => {
   }
   editor.remove();
 });
+
+test('new cards default every face to Integration Cover mode', () => {
+  const config = UninusGreenhouseRollupCard.getStubConfig();
+
+  assert.equal(config.faces.length, 4);
+  assert.ok(config.faces.every((face) => face.entity_mode === 'cover_entity'));
+  assert.ok(config.faces.every((face) => face.cover_entity === ''));
+  assert.ok(config.faces.every((face) => face.entity === ''));
+  assert.ok(config.faces.every((face) => face.motion_entity === ''));
+});
+
+test('Integration Cover mode hides every legacy-only editor field', () => {
+  const editor = window.document.createElement('uninus-greenhouse-rollup-test-editor');
+  window.document.body.append(editor);
+  editor.setConfig({ faces: ['east', 'south', 'west', 'north'].map((key) => ({ key, entity_mode: 'cover_entity' })) });
+  editor.hass = { states: {} };
+
+  assert.equal(editor.shadowRoot.querySelectorAll('[data-property="cover_entity"]').length, 4);
+  for (const property of ['entity', 'motion_entity', 'max_entity', 'max_value', 'unit']) {
+    assert.equal(editor.shadowRoot.querySelectorAll(`[data-property="${property}"]`).length, 0, property);
+  }
+  editor.remove();
+});
+
+test('Integration Cover picker only accepts cover entities', () => {
+  const editor = window.document.createElement('uninus-greenhouse-rollup-test-editor');
+  window.document.body.append(editor);
+  editor.setConfig({ faces: [
+    { key: 'east', entity_mode: 'cover_entity', cover_entity: 'switch.not_a_cover' },
+    { key: 'south', entity_mode: 'cover_entity', cover_entity: 'cover.south' },
+    { key: 'west', entity_mode: 'cover_entity', cover_entity: 'cover.west' },
+    { key: 'north', entity_mode: 'cover_entity', cover_entity: 'cover.north' },
+  ] });
+  editor.hass = { states: {} };
+
+  const picker = editor.shadowRoot.querySelector('[data-property="cover_entity"]');
+  assert.deepEqual(picker.includeDomains, ['cover']);
+  assert.equal(picker.hasAttribute('allow-custom-entity'), false);
+  const errors = [...editor.shadowRoot.querySelectorAll('[role="alert"]')];
+  assert.equal(errors.length, 1);
+  assert.match(errors[0].textContent, /cover\./);
+  editor.remove();
+});
+
+test('Integration Cover mode immediately identifies faces without a cover entity', () => {
+  const editor = window.document.createElement('uninus-greenhouse-rollup-test-editor');
+  window.document.body.append(editor);
+  editor.setConfig({ faces: [
+    { key: 'east', entity_mode: 'cover_entity', cover_entity: '' },
+    { key: 'south', entity_mode: 'cover_entity', cover_entity: 'cover.south' },
+    { key: 'west', entity_mode: 'cover_entity', cover_entity: 'cover.west' },
+    { key: 'north', entity_mode: 'cover_entity', cover_entity: 'cover.north' },
+  ] });
+  editor.hass = { states: {} };
+
+  const errors = [...editor.shadowRoot.querySelectorAll('[role="alert"]')];
+  assert.equal(errors.length, 1);
+  assert.match(errors[0].textContent, /Integration Cover Entity/);
+  assert.equal(errors[0].closest('.face-editor').querySelector('[data-face="east"]') !== null, true);
+  editor.remove();
+});
+
+test('switching a face to Integration Cover removes persisted legacy fields', () => {
+  const editor = window.document.createElement('uninus-greenhouse-rollup-test-editor');
+  window.document.body.append(editor);
+  editor.setConfig({ faces: [{
+    key: 'east',
+    entity_mode: 'position_entity',
+    cover_entity: 'cover.east',
+    entity: 'input_number.east',
+    motion_entity: 'binary_sensor.east',
+    max_entity: 'input_number.maximum',
+    max_value: 120,
+  }] });
+  editor.hass = { states: {} };
+  let saved;
+  editor.addEventListener('config-changed', (event) => { saved = event.detail.config; });
+
+  const mode = editor.shadowRoot.querySelector('[data-face="east"][data-property="entity_mode"]');
+  mode.querySelector('[value="position_entity"]').removeAttribute('selected');
+  mode.querySelector('[value="cover_entity"]').setAttribute('selected', '');
+  mode.dispatchEvent(new window.Event('change', { bubbles: true }));
+
+  const east = saved.faces.find((face) => face.key === 'east');
+  assert.equal(east.cover_entity, 'cover.east');
+  for (const property of ['entity', 'motion_entity', 'max_entity', 'max_value']) {
+    assert.equal(property in east, false, property);
+  }
+  editor.remove();
+});
+
+test('selecting a cover adopts its friendly name unless the face name was customized', () => {
+  const editor = window.document.createElement('uninus-greenhouse-rollup-test-editor');
+  window.document.body.append(editor);
+  editor.setConfig({ faces: [{ key: 'east', entity_mode: 'cover_entity', name: '東側' }] });
+  editor.hass = { states: { 'cover.east': { attributes: { friendly_name: '東側溫室捲揚' } } } };
+  let saved;
+  editor.addEventListener('config-changed', (event) => { saved = event.detail.config; });
+
+  const picker = editor.shadowRoot.querySelector('[data-face="east"][data-property="cover_entity"]');
+  picker.dispatchEvent(new window.CustomEvent('value-changed', { detail: { value: 'cover.east' }, bubbles: true }));
+
+  assert.equal(saved.faces.find((face) => face.key === 'east').name, '東側溫室捲揚');
+  editor.remove();
+});
+
+test('face display names are not suffixed with a duplicate rollup label', () => {
+  const { card } = createCard({ state: 'open', attributes: { current_position: 100 } });
+  card.setConfig({ faces: [{ key: 'east', name: '東側溫室捲揚', entity_mode: 'cover_entity', cover_entity: 'cover.east' }] });
+
+  assert.match(card.shadowRoot.innerHTML, /東側溫室捲揚/);
+  assert.doesNotMatch(card.shadowRoot.innerHTML, /捲揚捲揚/);
+  card.remove();
+});
+
+test('English cover friendly names keep their existing roll-up wording', () => {
+  const { card } = createCard({ state: 'open', attributes: { current_position: 100 } });
+  card.setConfig({ faces: [{ key: 'east', name: 'East Rollup Test', entity_mode: 'cover_entity', cover_entity: 'cover.east' }] });
+
+  assert.match(card.shadowRoot.innerHTML, /East Rollup Test/);
+  assert.doesNotMatch(card.shadowRoot.innerHTML, /East Rollup Test捲揚/);
+  card.remove();
+});
+
+test('closed color editor setting drives the rendered curtain color token', () => {
+  const { card } = createCard({ state: 'open', attributes: { current_position: 50 } });
+  card.setConfig({ closed_color: '#123456', faces: [{ key: 'east', entity_mode: 'cover_entity', cover_entity: 'cover.east' }] });
+
+  assert.match(card.shadowRoot.innerHTML, /--closed-color:#123456/);
+  assert.match(card.shadowRoot.innerHTML, /var\(--closed-color\)/);
+  card.remove();
+});

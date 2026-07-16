@@ -13,15 +13,33 @@
           "close_travel_time": "全關行程秒數",
           "reverse_dead_time": "方向切換安全間隔秒數"
         }
+      },
+      "reconfigure": {
+        "title": "重新設定溫室捲揚",
+        "description": "檢查或修改名稱、來源 Switch、行程時間與方向切換安全間隔。儲存後會重新載入此捲揚。",
+        "data": {
+          "name": "名稱",
+          "open_entity": "開啟 Switch",
+          "close_entity": "關閉 Switch",
+          "open_travel_time": "全開行程秒數",
+          "close_travel_time": "全關行程秒數",
+          "reverse_dead_time": "方向切換安全間隔秒數"
+        }
       }
     },
-    "error": {"same_switch": "開啟與關閉不可使用同一個 Switch。", "switch_in_use": "其中一個 Switch 已由其他捲揚使用。"},
-    "abort": {"already_configured": "這組 Switch 已經設定。"}
+    "error": {
+      "same_switch": "開啟與關閉不可使用同一個 Switch。",
+      "switch_in_use": "其中一個 Switch 已由其他捲揚使用。"
+    },
+    "abort": {
+      "already_configured": "這組 Switch 已經設定。",
+      "reconfigure_successful": "捲揚設定已更新。"
+    }
   },
   "options": {
     "step": {
       "init": {
-        "title": "調整行程時間",
+        "title": "調整行程與安全設定",
         "data": {
           "open_travel_time": "全開行程秒數",
           "close_travel_time": "全關行程秒數",

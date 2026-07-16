@@ -41,12 +41,12 @@
 4. 安裝 `UNiNUS Greenhouse Rollup`。
 5. 重新啟動 Home Assistant。
 
-## 新增捲揚
+## 新增與管理捲揚
 
-每一個實體捲揚建立一個 Config Entry：
+每一個實體捲揚建立一個 Helper／Config Entry：
 
-1. 設定 → 裝置與服務 → 新增整合。
-2. 搜尋 `UNiNUS Greenhouse Rollup`。
+1. 設定 → 裝置與服務 → **輔助項目**。
+2. 選擇「建立輔助項目」，搜尋 `UNiNUS Greenhouse Rollup`（UNiNUS 溫室捲揚）。
 3. 設定：
    - 名稱，例如「東側捲揚」；
    - 開啟／上捲 switch；
@@ -56,6 +56,8 @@
    - 方向切換安全間隔秒數（預設 `0.2` 秒）。
 4. 東、南、西、北分別重複新增。
 
+已建立的捲揚仍位於「設定 → 裝置與服務 → 輔助項目」。從該 Helper 的管理選單選擇**重新設定**，即可查看或修改名稱、兩個來源 Switch、兩個行程時間及方向切換安全間隔；不必刪除再重建。Card 只需選擇此 Helper 提供的 `cover.*`，不會直接操作底層 Switch。
+
 首次安裝時位置為未知。讓捲揚在任一方向完整執行一次設定的行程時間後，Integration 會將端點校正為 `0%` 或 `100%`。
 
 ## 安裝卡片資源
@@ -63,7 +65,7 @@
 Integration 會提供內建前端檔案。於「設定 → 儀表板 → 右上角選單 → 資源」新增 JavaScript Module：
 
 ```text
-/uninus-greenhouse-rollup/uninus-greenhouse-rollup-card.js?v=2.0.4
+/uninus-greenhouse-rollup/uninus-greenhouse-rollup-card.js?v=2.1.0
 ```
 
 之後重新整理瀏覽器。新增卡片時可搜尋 **UNiNUS Greenhouse Rollup Card**，並使用**視覺化設定**。

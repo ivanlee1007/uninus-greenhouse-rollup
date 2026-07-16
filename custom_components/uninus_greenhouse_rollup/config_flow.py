@@ -61,10 +61,14 @@ def _switches_in_use(
     entries: list[config_entries.ConfigEntry],
     open_entity: str,
     close_entity: str,
+    *,
+    exclude_entry_id: str | None = None,
 ) -> bool:
     """Prevent independently locked entries from sharing actuator relays."""
     requested = {open_entity, close_entity}
     for entry in entries:
+        if entry.entry_id == exclude_entry_id:
+            continue
         configured = {entry.data.get(CONF_OPEN_ENTITY), entry.data.get(CONF_CLOSE_ENTITY)}
         if requested & configured:
             return True
@@ -118,6 +122,40 @@ class UninusGreenhouseRollupConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(title=user_input[CONF_NAME], data=user_input)
         return self.async_show_form(step_id="user", data_schema=_schema(user_input), errors=errors)
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Edit the complete actuator mapping and timing configuration."""
+        entry = self._get_reconfigure_entry()
+        current = {**entry.data, **entry.options}
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            if user_input[CONF_OPEN_ENTITY] == user_input[CONF_CLOSE_ENTITY]:
+                errors["base"] = "same_switch"
+            elif _switches_in_use(
+                self._async_current_entries(),
+                user_input[CONF_OPEN_ENTITY],
+                user_input[CONF_CLOSE_ENTITY],
+                exclude_entry_id=entry.entry_id,
+            ):
+                errors["base"] = "switch_in_use"
+            else:
+                return self.async_update_reload_and_abort(
+                    entry,
+                    unique_id=_pair_unique_id(
+                        user_input[CONF_OPEN_ENTITY],
+                        user_input[CONF_CLOSE_ENTITY],
+                    ),
+                    title=user_input[CONF_NAME],
+                    data=user_input,
+                    options={},
+                )
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=_schema(user_input or current),
+            errors=errors,
+        )
 
     @staticmethod
     def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:

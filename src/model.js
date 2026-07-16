@@ -214,6 +214,22 @@ export function applyEditorChange(config, { faceKey, property, value, valueType 
   return { ...config, [property]: nextValue };
 }
 
+export function configForSave(config) {
+  const result = {
+    ...config,
+    faces: config.faces.map((face) => {
+      if (face.entity_mode === 'cover_entity') {
+        const { entity: _entity, motion_entity: _motion, max_entity: _maxEntity, max_value: _maxValue, ...coverFace } = face;
+        return coverFace;
+      }
+      const { cover_entity: _cover, ...legacyFace } = face;
+      return legacyFace;
+    }),
+  };
+  if (!result.faces.some((face) => face.entity_mode === 'position_entity')) delete result.unit;
+  return result;
+}
+
 const THEME_TOKENS = Object.freeze({
   dark: { background: 'linear-gradient(145deg,#172229,#080e12)', surface: 'rgba(39,52,60,.92)', text: '#f5f8fa', muted: 'rgba(218,230,236,.58)', frame: '#111c22' },
   light: { background: 'linear-gradient(145deg,#f7faf8,#dfe9e5)', surface: 'rgba(255,255,255,.82)', text: '#183028', muted: 'rgba(24,48,40,.62)', frame: '#d2dfda' },
