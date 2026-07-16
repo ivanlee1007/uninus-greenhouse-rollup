@@ -1,7 +1,7 @@
 import asyncio
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, skipIf
-from unittest.mock import AsyncMock, call, patch
+from unittest.mock import AsyncMock, Mock, call, patch
 
 try:
     from custom_components.uninus_greenhouse_rollup.const import (
@@ -200,6 +200,16 @@ class CoverControlTest(IsolatedAsyncioTestCase):
         with patch.object(cover_module.time, "monotonic", return_value=100):
             self.cover._sync_from_switches()
         self.assertAlmostEqual(self.cover._estimator.position, 10)
+
+    def test_tick_recovers_when_sources_appear_after_startup_without_an_event(self):
+        self.cover._relays_available = False
+        self.cover.async_write_ha_state = Mock()
+
+        with patch.object(cover_module.time, "monotonic", return_value=10):
+            self.cover._handle_tick(None)
+
+        self.assertTrue(self.cover._relays_available)
+        self.cover.async_write_ha_state.assert_called_once_with()
 
 
 if __name__ == "__main__":

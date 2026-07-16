@@ -147,10 +147,8 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
 
     @callback
     def _handle_tick(self, _now: Any) -> None:
-        """Update estimated position while a command timer is active."""
-        if not self._relays_available:
-            return
-        self._estimator.advance(time.monotonic())
+        """Resync source states and update the estimate every interval."""
+        self._sync_from_switches()
         self.async_write_ha_state()
 
     @callback
