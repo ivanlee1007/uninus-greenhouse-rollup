@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -18,6 +19,8 @@ from .const import (
 )
 
 _OWNERS_KEY = "relay_owners"
+_FRONTEND_LOCK_KEY = "frontend_lock"
+_FRONTEND_REGISTERED_KEY = "frontend_registered"
 
 
 def _claim_relay_ownership(
@@ -49,6 +52,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     domain_data = hass.data.setdefault(DOMAIN, {})
     owners = domain_data.setdefault(_OWNERS_KEY, {})
+    frontend_lock = domain_data.setdefault(_FRONTEND_LOCK_KEY, asyncio.Lock())
     data = {**entry.data, **entry.options}
     if not _claim_relay_ownership(
         owners,
@@ -61,12 +65,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
 
     try:
-        if not domain_data.get("frontend_registered"):
-            card_path = Path(__file__).parent / "www" / "uninus-greenhouse-rollup-card.js"
-            await hass.http.async_register_static_paths(
-                [StaticPathConfig(CARD_URL, str(card_path), cache_headers=True)]
-            )
-            domain_data["frontend_registered"] = True
+        async with frontend_lock:
+            if not domain_data.get(_FRONTEND_REGISTERED_KEY):
+                card_path = (
+                    Path(__file__).parent / "www" / "uninus-greenhouse-rollup-card.js"
+                )
+                await hass.http.async_register_static_paths(
+                    [StaticPathConfig(CARD_URL, str(card_path), cache_headers=True)]
+                )
+                domain_data[_FRONTEND_REGISTERED_KEY] = True
 
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     except Exception:
