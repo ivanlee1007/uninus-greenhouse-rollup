@@ -9,6 +9,9 @@ const FACE_DEFAULTS = {
 
 const THEMES = new Set(['dark', 'light', 'greenhouse', 'sand']);
 const COLOR_PATTERN = /^(#[0-9a-f]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|[a-z]+)$/i;
+const COVER_FEATURE_OPEN = 1;
+const COVER_FEATURE_CLOSE = 2;
+const COVER_FEATURE_STOP = 8;
 
 export const DEFAULT_CONFIG = Object.freeze({
   type: 'custom:uninus-greenhouse-rollup-card',
@@ -133,36 +136,58 @@ function resolveIntegrationCoverState(face, cover) {
     : Number(positionValue);
   const positionKnown = Number.isFinite(rawPosition);
   const percent = positionKnown ? Math.max(0, Math.min(100, Math.round(rawPosition))) : null;
-  const commandState = String(cover.attributes?.command_state ?? entityState).toLowerCase();
-  const confidence = String(cover.attributes?.position_confidence ?? 'unknown').toLowerCase();
-  const motion = entityState === 'opening' && (!positionKnown || percent < 100)
+  const managedCover = cover.attributes?.position_is_estimated === true;
+  const commandState = managedCover
+    ? String(cover.attributes?.command_state ?? entityState).toLowerCase()
+    : entityState;
+  const confidence = managedCover
+    ? String(cover.attributes?.position_confidence ?? 'unknown').toLowerCase()
+    : '';
+  const motion = entityState === 'opening' && (!managedCover || !positionKnown || percent < 100)
     ? 'opening'
-    : entityState === 'closing' && (!positionKnown || percent > 0) ? 'closing' : 'idle';
+    : entityState === 'closing' && (!managedCover || !positionKnown || percent > 0) ? 'closing' : 'idle';
   const moving = motion !== 'idle';
-  const motionLabel = commandState === 'conflict'
+  const motionLabel = managedCover && commandState === 'conflict'
     ? '控制衝突'
-    : commandState === 'opening_timer' && percent >= 100
+    : managedCover && commandState === 'opening_timer' && percent >= 100
       ? '已全開'
-      : commandState === 'closing_timer' && percent <= 0
+      : managedCover && commandState === 'closing_timer' && percent <= 0
         ? '已全關'
         : motion === 'opening' ? '開啟中' : motion === 'closing' ? '關閉中' : '靜止';
-  const commandLabel = commandState === 'opening_timer'
-    ? '開啟計時中'
-    : commandState === 'closing_timer'
-      ? '關閉計時中'
-      : commandState === 'opening'
-        ? '開啟命令中'
-        : commandState === 'closing'
-          ? '關閉命令中'
-          : commandState === 'conflict'
-            ? '開關衝突'
-            : commandState === 'unavailable' ? '控制不可用' : '沒有控制命令';
-  const confidenceLabel = confidence === 'calibrated'
-    ? '端點已校正'
-    : confidence === 'estimated' ? '估算位置' : '位置未校正';
+  const commandLabel = !managedCover
+    ? '裝置回報'
+    : commandState === 'opening_timer'
+      ? '開啟計時中'
+      : commandState === 'closing_timer'
+        ? '關閉計時中'
+        : commandState === 'opening'
+          ? '開啟命令中'
+          : commandState === 'closing'
+            ? '關閉命令中'
+            : commandState === 'conflict'
+              ? '開關衝突'
+              : commandState === 'unavailable' ? '控制不可用' : '沒有控制命令';
+  const confidenceLabel = !managedCover
+    ? ''
+    : confidence === 'calibrated'
+      ? '端點已校正'
+      : confidence === 'estimated' ? '估算位置' : '位置未校正';
   const positionLabel = !available
     ? '位置資料不可用'
-    : !positionKnown ? '位置尚未校正' : percent <= 0 ? '全閉' : percent >= 100 ? '全開' : `估算開啟 ${percent}%`;
+    : managedCover
+      ? !positionKnown ? '位置尚未校正' : percent <= 0 ? '全閉' : percent >= 100 ? '全開' : `估算開啟 ${percent}%`
+      : positionKnown
+        ? percent <= 0 ? '全閉' : percent >= 100 ? '全開' : `開啟 ${percent}%`
+        : entityState === 'closed' ? '已全關・位置未提供' : entityState === 'open' ? '已開啟・位置未提供' : entityState === 'opening' ? '開啟中・位置未提供' : entityState === 'closing' ? '關閉中・位置未提供' : '位置未提供';
+  const featureValue = Number(cover.attributes?.supported_features);
+  const hasFeatures = Number.isFinite(featureValue);
+  const supports = !hasFeatures
+    ? { open: true, close: true, stop: true }
+    : {
+        open: Boolean(featureValue & COVER_FEATURE_OPEN),
+        close: Boolean(featureValue & COVER_FEATURE_CLOSE),
+        stop: Boolean(featureValue & COVER_FEATURE_STOP),
+      };
   return {
     available,
     value: positionKnown ? percent : null,
@@ -174,11 +199,13 @@ function resolveIntegrationCoverState(face, cover) {
     positionLabel,
     positionKnown,
     integration: true,
+    managedCover,
     controlEntity: face.cover_entity,
     confidence,
     confidenceLabel,
     commandState,
     commandLabel,
+    supports,
   };
 }
 

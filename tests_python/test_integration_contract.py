@@ -11,7 +11,7 @@ class IntegrationContractTest(unittest.TestCase):
         manifest = json.loads((INTEGRATION / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["domain"], "uninus_greenhouse_rollup")
         self.assertTrue(manifest["config_flow"])
-        self.assertEqual(manifest["integration_type"], "helper")
+        self.assertEqual(manifest["integration_type"], "service")
         self.assertEqual(manifest["iot_class"], "calculated")
         self.assertRegex(manifest["version"], r"^\d+\.\d+\.\d+$")
 
@@ -25,6 +25,17 @@ class IntegrationContractTest(unittest.TestCase):
             "CONF_REVERSE_DEAD_TIME",
             "selector.EntitySelector",
             'domain=["switch"]',
+        ):
+            self.assertIn(marker, source)
+
+    def test_config_flow_supports_native_cover_frontend_and_legacy_adapter_modes(self):
+        source = (INTEGRATION / "config_flow.py").read_text(encoding="utf-8")
+        for marker in (
+            "ACTUATOR_MODE_NATIVE_COVER",
+            "ACTUATOR_MODE_DUAL_SWITCH",
+            "async_step_native_cover",
+            "async_step_legacy_switch_pair",
+            "VERSION = 2",
         ):
             self.assertIn(marker, source)
 
@@ -52,6 +63,28 @@ class IntegrationContractTest(unittest.TestCase):
         self.assertIn("async_register_static_paths", source)
         self.assertIn("uninus-greenhouse-rollup-card.js", source)
         self.assertTrue((INTEGRATION / "www" / "uninus-greenhouse-rollup-card.js").is_file())
+
+    def test_all_translations_describe_both_hardware_paths(self):
+        paths = [
+            INTEGRATION / "strings.json",
+            INTEGRATION / "translations" / "en.json",
+            INTEGRATION / "translations" / "zh-Hant.json",
+        ]
+        for path in paths:
+            strings = json.loads(path.read_text(encoding="utf-8"))
+            steps = strings["config"]["step"]
+            self.assertEqual(
+                set(steps["user"]["menu_options"]),
+                {"native_cover", "legacy_switch_pair"},
+                path.name,
+            )
+            self.assertIn("native_cover", steps, path.name)
+            self.assertIn("legacy_switch_pair", steps, path.name)
+            self.assertIn(
+                "native_cover_no_settings",
+                strings["config"]["abort"],
+                path.name,
+            )
 
     def test_hacs_repository_is_an_integration_not_dashboard_only(self):
         hacs = json.loads((ROOT / "hacs.json").read_text(encoding="utf-8"))

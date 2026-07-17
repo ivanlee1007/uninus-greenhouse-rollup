@@ -49,6 +49,7 @@ test('integration control click calls the exact cover service without opening Mo
       current_position: 42,
       command_state: 'opening',
       position_confidence: 'estimated',
+      position_is_estimated: true,
     },
   });
   let moreInfoCount = 0;
@@ -78,10 +79,54 @@ test('integration controls are disabled when the cover is unavailable', () => {
   card.remove();
 });
 
+test('semantic details button opens More Info without calling a Cover service', () => {
+  const { card, calls } = createCard({
+    state: 'open',
+    attributes: { current_position: 50, supported_features: 11 },
+  });
+  let entityId = '';
+  card.addEventListener('hass-more-info', (event) => { entityId = event.detail.entityId; });
+
+  const details = card.shadowRoot.querySelector('button.more-info');
+  assert.ok(details);
+  assert.match(details.getAttribute('aria-label'), /詳細資料/);
+  details.click();
+
+  assert.equal(entityId, 'cover.east');
+  assert.deepEqual(calls, []);
+  assert.equal(card.shadowRoot.querySelector('.controls').getAttribute('role'), 'group');
+  card.remove();
+});
+
+test('native MQTT cover hides unsupported stop control and estimator wording', () => {
+  const { card } = createCard({
+    state: 'open',
+    attributes: { supported_features: 3 },
+  });
+
+  assert.ok(card.shadowRoot.querySelector('[data-action="open"]'));
+  assert.ok(card.shadowRoot.querySelector('[data-action="close"]'));
+  assert.equal(card.shadowRoot.querySelector('[data-action="stop"]'), null);
+  assert.match(card.shadowRoot.querySelector('.controls').getAttribute('style'), /--control-count:2/);
+  assert.match(card.shadowRoot.innerHTML, /已開啟・位置未提供/);
+  assert.doesNotMatch(card.shadowRoot.innerHTML, /位置未校正|估算位置|計時中/);
+  card.remove();
+});
+
+test('read-only native Cover does not render an empty controls container', () => {
+  const { card } = createCard({
+    state: 'open',
+    attributes: { supported_features: 0 },
+  });
+
+  assert.equal(card.shadowRoot.querySelector('.controls'), null);
+  card.remove();
+});
+
 test('unknown position uses neutral geometry instead of looking fully closed', () => {
   const { card } = createCard({
     state: 'opening',
-    attributes: { current_position: null, command_state: 'opening', position_confidence: 'unknown' },
+    attributes: { current_position: null, command_state: 'opening', position_confidence: 'unknown', position_is_estimated: true },
   });
   const face = card.shadowRoot.querySelector('.face');
 
@@ -95,7 +140,7 @@ test('pending direction command survives a hass rerender and blocks duplicate di
   let finish;
   let callCount = 0;
   const pending = new Promise((resolve) => { finish = resolve; });
-  const state = { state: 'open', attributes: { current_position: 50, command_state: 'idle' } };
+  const state = { state: 'open', attributes: { current_position: 50, command_state: 'idle', position_is_estimated: true } };
   const { card } = createCard(state, async () => { callCount += 1; await pending; });
 
   card.shadowRoot.querySelector('[data-action="open"]').click();
@@ -117,7 +162,7 @@ test('pending direction command survives a hass rerender and blocks duplicate di
 test('conflict disables directions but leaves stop available', () => {
   const { card } = createCard({
     state: 'open',
-    attributes: { current_position: 50, command_state: 'conflict' },
+    attributes: { current_position: 50, command_state: 'conflict', position_is_estimated: true },
   });
 
   assert.equal(card.shadowRoot.querySelector('[data-action="open"]').disabled, true);
@@ -128,7 +173,7 @@ test('conflict disables directions but leaves stop available', () => {
 
 test('service rejection is handled and emits a Home Assistant notification', async () => {
   const { card } = createCard(
-    { state: 'open', attributes: { current_position: 50, command_state: 'idle' } },
+    { state: 'open', attributes: { current_position: 50, command_state: 'idle', position_is_estimated: true } },
     async () => { throw new Error('service failed'); },
   );
   let message = '';
@@ -215,8 +260,19 @@ test('Integration Cover mode immediately identifies faces without a cover entity
 
   const errors = [...editor.shadowRoot.querySelectorAll('[role="alert"]')];
   assert.equal(errors.length, 1);
-  assert.match(errors[0].textContent, /Integration Cover Entity/);
+  assert.match(errors[0].textContent, /標準 Cover Entity/);
   assert.equal(errors[0].closest('.face-editor').querySelector('[data-face="east"]') !== null, true);
+  editor.remove();
+});
+
+test('cover editor uses standard Cover wording for native MQTT and managed covers', () => {
+  const editor = window.document.createElement('uninus-greenhouse-rollup-test-editor');
+  window.document.body.append(editor);
+  editor.setConfig({ faces: [{ key: 'east', entity_mode: 'cover_entity', cover_entity: 'cover.east' }] });
+  editor.hass = { states: {} };
+
+  assert.match(editor.shadowRoot.innerHTML, /標準 Cover/);
+  assert.doesNotMatch(editor.shadowRoot.innerHTML, /Integration Cover/);
   editor.remove();
 });
 

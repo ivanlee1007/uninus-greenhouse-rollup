@@ -3,6 +3,10 @@
 DOMAIN = "uninus_greenhouse_rollup"
 PLATFORMS = ["cover"]
 
+CONF_ACTUATOR_MODE = "actuator_mode"
+ACTUATOR_MODE_DUAL_SWITCH = "dual_switch"
+ACTUATOR_MODE_NATIVE_COVER = "native_cover"
+
 CONF_OPEN_ENTITY = "open_entity"
 CONF_CLOSE_ENTITY = "close_entity"
 CONF_OPEN_TRAVEL_TIME = "open_travel_time"

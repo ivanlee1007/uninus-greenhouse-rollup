@@ -12,6 +12,9 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
 from .const import (
+    ACTUATOR_MODE_DUAL_SWITCH,
+    ACTUATOR_MODE_NATIVE_COVER,
+    CONF_ACTUATOR_MODE,
     CONF_CLOSE_ENTITY,
     CONF_CLOSE_TRAVEL_TIME,
     CONF_OPEN_ENTITY,
@@ -101,9 +104,34 @@ def _schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
 class UninusGreenhouseRollupConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Create one remembered cover from a pair of switch entities."""
 
-    VERSION = 1
+    VERSION = 2
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Choose between direct native Covers and a legacy switch adapter."""
+        if user_input is not None:
+            return await self.async_step_legacy_switch_pair(user_input)
+        return self.async_show_menu(
+            step_id="user",
+            menu_options=["native_cover", "legacy_switch_pair"],
+        )
+
+    async def async_step_native_cover(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Enable the bundled card for direct use with native MQTT Covers."""
+        if user_input is not None:
+            await self.async_set_unique_id("native_cover_support")
+            self._abort_if_unique_id_configured()
+            return self.async_create_entry(
+                title="Native MQTT Cover support",
+                data={CONF_ACTUATOR_MODE: ACTUATOR_MODE_NATIVE_COVER},
+            )
+        return self.async_show_form(step_id="native_cover", data_schema=vol.Schema({}))
+
+    async def async_step_legacy_switch_pair(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Create one remembered Cover from a legacy pair of switches."""
         errors: dict[str, str] = {}
         if user_input is not None:
             if user_input[CONF_OPEN_ENTITY] == user_input[CONF_CLOSE_ENTITY]:
@@ -120,8 +148,15 @@ class UninusGreenhouseRollupConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
                 )
                 await self.async_set_unique_id(unique)
                 self._abort_if_unique_id_configured()
-                return self.async_create_entry(title=user_input[CONF_NAME], data=user_input)
-        return self.async_show_form(step_id="user", data_schema=_schema(user_input), errors=errors)
+                return self.async_create_entry(
+                    title=user_input[CONF_NAME],
+                    data={**user_input, CONF_ACTUATOR_MODE: ACTUATOR_MODE_DUAL_SWITCH},
+                )
+        return self.async_show_form(
+            step_id="legacy_switch_pair",
+            data_schema=_schema(user_input),
+            errors=errors,
+        )
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
@@ -129,6 +164,8 @@ class UninusGreenhouseRollupConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
         """Edit the complete actuator mapping and timing configuration."""
         entry = self._get_reconfigure_entry()
         current = {**entry.data, **entry.options}
+        if current.get(CONF_ACTUATOR_MODE) == ACTUATOR_MODE_NATIVE_COVER:
+            return self.async_abort(reason="native_cover_no_settings")
         errors: dict[str, str] = {}
         if user_input is not None:
             if user_input[CONF_OPEN_ENTITY] == user_input[CONF_CLOSE_ENTITY]:
@@ -148,7 +185,7 @@ class UninusGreenhouseRollupConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
                         user_input[CONF_CLOSE_ENTITY],
                     ),
                     title=user_input[CONF_NAME],
-                    data=user_input,
+                    data={**user_input, CONF_ACTUATOR_MODE: ACTUATOR_MODE_DUAL_SWITCH},
                     options={},
                 )
         return self.async_show_form(
@@ -167,6 +204,8 @@ class RollupOptionsFlow(config_entries.OptionsFlowWithReload):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         current = {**self.config_entry.data, **self.config_entry.options}
+        if current.get(CONF_ACTUATOR_MODE) == ACTUATOR_MODE_NATIVE_COVER:
+            return self.async_abort(reason="native_cover_no_settings")
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
         schema = vol.Schema(

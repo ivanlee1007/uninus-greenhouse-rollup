@@ -3,8 +3,20 @@
   "config": {
     "step": {
       "user": {
-        "title": "新增溫室捲揚",
-        "description": "將互斥的開啟與關閉 switch 組合成可記憶估算位置的 Cover。",
+        "title": "設定 UNiNUS 溫室捲揚",
+        "description": "新版 MQTT Cover 可直接供卡片使用；舊版雙 Switch 可建立具有安全互鎖與位置估算的 Cover。",
+        "menu_options": {
+          "native_cover": "新版：直接使用原生 MQTT Cover",
+          "legacy_switch_pair": "舊版：將兩個 Switch 組合成 Cover"
+        }
+      },
+      "native_cover": {
+        "title": "啟用原生 MQTT Cover 支援",
+        "description": "這不會建立代理 Cover，也不會控制底層 Relay。完成後，請在 UNiNUS Card 直接選擇裝置提供的 cover.* Entity。"
+      },
+      "legacy_switch_pair": {
+        "title": "新增舊版雙 Switch 捲揚",
+        "description": "將互斥的開啟與關閉 Switch 組合成可記憶估算位置的 Cover。",
         "data": {
           "name": "名稱",
           "open_entity": "開啟 Switch",
@@ -15,7 +27,7 @@
         }
       },
       "reconfigure": {
-        "title": "重新設定溫室捲揚",
+        "title": "重新設定舊版雙 Switch 捲揚",
         "description": "檢查或修改名稱、來源 Switch、行程時間與方向切換安全間隔。儲存後會重新載入此捲揚。",
         "data": {
           "name": "名稱",
@@ -32,20 +44,24 @@
       "switch_in_use": "其中一個 Switch 已由其他捲揚使用。"
     },
     "abort": {
-      "already_configured": "這組 Switch 已經設定。",
-      "reconfigure_successful": "捲揚設定已更新。"
+      "already_configured": "這組 Switch 或原生 Cover 支援已經設定。",
+      "reconfigure_successful": "捲揚設定已更新。",
+      "native_cover_no_settings": "原生 MQTT Cover 由 MQTT Integration 管理，UNiNUS 不會建立代理或重複設定。"
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "調整行程與安全設定",
+        "title": "調整舊版行程與安全設定",
         "data": {
           "open_travel_time": "全開行程秒數",
           "close_travel_time": "全關行程秒數",
           "reverse_dead_time": "方向切換安全間隔秒數"
         }
       }
+    },
+    "abort": {
+      "native_cover_no_settings": "原生 MQTT Cover 沒有需要由 UNiNUS 調整的行程或 Relay 設定。"
     }
   }
 }

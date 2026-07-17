@@ -24,5 +24,9 @@ test('README documents the visual editor and exact items per row', async () => {
   assert.match(readme, /最多 4/);
   assert.match(readme, /items_per_row/);
   assert.match(readme, /固定產生 1～4 欄/);
+  assert.match(readme, /原生 MQTT Cover/);
+  assert.match(readme, /不會建立代理 Cover/);
+  assert.match(readme, /舊版雙 Switch/);
+  assert.match(readme, /設定 → 裝置與服務 → 整合/);
   assert.doesNotMatch(readme, /force_1x4/);
 });

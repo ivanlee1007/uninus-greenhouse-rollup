@@ -114,7 +114,7 @@ test('integration cover stops motion animation at endpoint while relay timer rem
   const states = {
     'cover.east_rollup': {
       state: 'open',
-      attributes: { current_position: 100, position_confidence: 'calibrated', command_state: 'opening_timer' },
+      attributes: { current_position: 100, position_confidence: 'calibrated', command_state: 'opening_timer', position_is_estimated: true },
     },
   };
   const result = resolveFaceState({ cover_entity: 'cover.east_rollup' }, states);
@@ -128,7 +128,7 @@ test('integration cover stops motion animation at endpoint while relay timer rem
 test('integration cover safely reports unknown and unavailable positions', () => {
   const unknown = resolveFaceState(
     { cover_entity: 'cover.unknown' },
-    { 'cover.unknown': { state: 'opening', attributes: { command_state: 'opening', position_confidence: 'unknown' } } },
+    { 'cover.unknown': { state: 'opening', attributes: { command_state: 'opening', position_confidence: 'unknown', position_is_estimated: true } } },
   );
   assert.equal(unknown.available, true);
   assert.equal(unknown.positionKnown, false);
@@ -139,6 +139,119 @@ test('integration cover safely reports unknown and unavailable positions', () =>
     { 'cover.offline': { state: 'unavailable', attributes: {} } },
   );
   assert.equal(unavailable.available, false);
+});
+
+test('native MQTT cover uses reported position without estimator-specific metadata', () => {
+  const state = resolveFaceState({ cover_entity: 'cover.native' }, {
+    'cover.native': {
+      state: 'opening',
+      attributes: { current_position: 37, supported_features: 11 },
+    },
+  });
+
+  assert.equal(state.integration, true);
+  assert.equal(state.managedCover, false);
+  assert.equal(state.positionLabel, '開啟 37%');
+  assert.equal(state.confidenceLabel, '');
+  assert.equal(state.commandLabel, '裝置回報');
+  assert.deepEqual(state.supports, { open: true, close: true, stop: true });
+});
+
+test('native MQTT cover without position does not pretend open means 100 percent', () => {
+  const state = resolveFaceState({ cover_entity: 'cover.native' }, {
+    'cover.native': {
+      state: 'open',
+      attributes: { supported_features: 3 },
+    },
+  });
+
+  assert.equal(state.positionKnown, false);
+  assert.equal(state.percent, null);
+  assert.equal(state.positionLabel, '已開啟・位置未提供');
+  assert.deepEqual(state.supports, { open: true, close: true, stop: false });
+});
+
+test('native Cover custom attributes do not opt into the Integration estimator UI', () => {
+  const state = resolveFaceState({ cover_entity: 'cover.native' }, {
+    'cover.native': {
+      state: 'open',
+      attributes: {
+        current_position: 42,
+        command_state: 'opening',
+        position_confidence: 'estimated',
+        supported_features: 3,
+      },
+    },
+  });
+
+  assert.equal(state.managedCover, false);
+  assert.equal(state.positionLabel, '開啟 42%');
+  assert.equal(state.commandLabel, '裝置回報');
+  assert.equal(state.confidenceLabel, '');
+});
+
+test('native Cover movement state remains authoritative at stale position endpoints', () => {
+  const opening = resolveFaceState({ cover_entity: 'cover.native' }, {
+    'cover.native': { state: 'opening', attributes: { current_position: 100, supported_features: 11 } },
+  });
+  const closing = resolveFaceState({ cover_entity: 'cover.native' }, {
+    'cover.native': { state: 'closing', attributes: { current_position: 0, supported_features: 11 } },
+  });
+
+  assert.equal(opening.motion, 'opening');
+  assert.equal(opening.moving, true);
+  assert.equal(closing.motion, 'closing');
+  assert.equal(closing.moving, true);
+});
+
+test('managed timed Cover suppresses endpoint motion but still respects supported features', () => {
+  const opening = resolveFaceState({ cover_entity: 'cover.managed' }, {
+    'cover.managed': {
+      state: 'opening',
+      attributes: {
+        current_position: 100,
+        command_state: 'opening_timer',
+        position_confidence: 'calibrated',
+        position_is_estimated: true,
+        supported_features: 3,
+      },
+    },
+  });
+  const closing = resolveFaceState({ cover_entity: 'cover.managed' }, {
+    'cover.managed': {
+      state: 'closing',
+      attributes: {
+        current_position: 0,
+        command_state: 'closing_timer',
+        position_confidence: 'calibrated',
+        position_is_estimated: true,
+        supported_features: 3,
+      },
+    },
+  });
+
+  assert.equal(opening.motion, 'idle');
+  assert.equal(closing.motion, 'idle');
+  assert.deepEqual(opening.supports, { open: true, close: true, stop: false });
+});
+
+test('Cover capability bits are interpreted consistently', () => {
+  const expected = new Map([
+    [0, { open: false, close: false, stop: false }],
+    [1, { open: true, close: false, stop: false }],
+    [2, { open: false, close: true, stop: false }],
+    [3, { open: true, close: true, stop: false }],
+    [4, { open: false, close: false, stop: false }],
+    [8, { open: false, close: false, stop: true }],
+    [11, { open: true, close: true, stop: true }],
+  ]);
+
+  for (const [supported_features, supports] of expected) {
+    const state = resolveFaceState({ cover_entity: 'cover.capability' }, {
+      'cover.capability': { state: 'open', attributes: { supported_features } },
+    });
+    assert.deepEqual(state.supports, supports, `supported_features=${supported_features}`);
+  }
 });
 
 test('explicit cover mode never falls back to legacy when the cover entity is missing', () => {

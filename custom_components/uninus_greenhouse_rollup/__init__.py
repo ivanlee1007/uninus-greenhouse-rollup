@@ -11,7 +11,10 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
 from .const import (
+    ACTUATOR_MODE_DUAL_SWITCH,
+    ACTUATOR_MODE_NATIVE_COVER,
     CARD_URL,
+    CONF_ACTUATOR_MODE,
     CONF_CLOSE_ENTITY,
     CONF_OPEN_ENTITY,
     DOMAIN,
@@ -21,6 +24,11 @@ from .const import (
 _OWNERS_KEY = "relay_owners"
 _FRONTEND_LOCK_KEY = "frontend_lock"
 _FRONTEND_REGISTERED_KEY = "frontend_registered"
+
+
+def _entry_mode(data: dict) -> str:
+    """Return the entry mode, preserving version-one dual-switch entries."""
+    return data.get(CONF_ACTUATOR_MODE, ACTUATOR_MODE_DUAL_SWITCH)
 
 
 def _claim_relay_ownership(
@@ -54,7 +62,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     owners = domain_data.setdefault(_OWNERS_KEY, {})
     frontend_lock = domain_data.setdefault(_FRONTEND_LOCK_KEY, asyncio.Lock())
     data = {**entry.data, **entry.options}
-    if not _claim_relay_ownership(
+    mode = _entry_mode(data)
+    if mode not in (ACTUATOR_MODE_DUAL_SWITCH, ACTUATOR_MODE_NATIVE_COVER):
+        raise ConfigEntryError(f"Unsupported actuator mode: {mode}")
+    owns_relays = mode == ACTUATOR_MODE_DUAL_SWITCH
+    if owns_relays and not _claim_relay_ownership(
         owners,
         entry.entry_id,
         data[CONF_OPEN_ENTITY],
@@ -75,18 +87,35 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 )
                 domain_data[_FRONTEND_REGISTERED_KEY] = True
 
-        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        if owns_relays:
+            await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     except Exception:
-        _release_relay_ownership(owners, entry.entry_id)
+        if owns_relays:
+            _release_relay_ownership(owners, entry.entry_id)
         raise
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a greenhouse roll-up entry."""
+    data = {**entry.data, **entry.options}
+    if _entry_mode(data) == ACTUATOR_MODE_NATIVE_COVER:
+        return True
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
         domain_data = hass.data.get(DOMAIN, {})
         owners = domain_data.get(_OWNERS_KEY, {})
         _release_relay_ownership(owners, entry.entry_id)
     return unloaded
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Add an explicit actuator mode to version-one dual-switch entries."""
+    if entry.version == 1:
+        hass.config_entries.async_update_entry(
+            entry,
+            data={**entry.data, CONF_ACTUATOR_MODE: ACTUATOR_MODE_DUAL_SWITCH},
+            version=2,
+        )
+        return True
+    return entry.version == 2

@@ -1,8 +1,10 @@
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase, skipIf
+from unittest.mock import AsyncMock
 
 try:
     from custom_components.uninus_greenhouse_rollup.config_flow import (
+        RollupOptionsFlow,
         UninusGreenhouseRollupConfigFlow,
         _pair_unique_id,
         _switches_in_use,
@@ -16,6 +18,7 @@ except (ModuleNotFoundError, ImportError) as error:
         _pair_unique_id = None
         _switches_in_use = None
         UninusGreenhouseRollupConfigFlow = None
+        RollupOptionsFlow = None
     elif isinstance(error, ImportError):
         raise
     else:
@@ -76,6 +79,61 @@ class ConfigFlowHelperTest(TestCase):
 
 @skipIf(UninusGreenhouseRollupConfigFlow is None, "Home Assistant test dependency not installed")
 class ReconfigureFlowTest(IsolatedAsyncioTestCase):
+    async def test_user_step_offers_native_cover_and_legacy_switch_paths(self):
+        flow = UninusGreenhouseRollupConfigFlow()
+
+        result = await flow.async_step_user()
+
+        self.assertEqual(result["type"].value, "menu")
+        self.assertEqual(result["step_id"], "user")
+        self.assertEqual(
+            result["menu_options"],
+            ["native_cover", "legacy_switch_pair"],
+        )
+
+    async def test_native_cover_path_creates_one_frontend_support_entry(self):
+        flow = UninusGreenhouseRollupConfigFlow()
+        flow.async_set_unique_id = AsyncMock()
+        flow._abort_if_unique_id_configured = lambda: None
+
+        result = await flow.async_step_native_cover({})
+
+        flow.async_set_unique_id.assert_awaited_once_with("native_cover_support")
+        self.assertEqual(result["type"].value, "create_entry")
+        self.assertEqual(result["data"], {"actuator_mode": "native_cover"})
+
+    async def test_native_support_entry_has_no_relay_reconfigure_form(self):
+        entry = SimpleNamespace(
+            entry_id="native-support",
+            data={"actuator_mode": "native_cover"},
+            options={},
+        )
+        flow = UninusGreenhouseRollupConfigFlow()
+        flow._get_reconfigure_entry = lambda: entry
+
+        result = await flow.async_step_reconfigure()
+
+        self.assertEqual(result["type"].value, "abort")
+        self.assertEqual(result["reason"], "native_cover_no_settings")
+
+    async def test_native_support_entry_has_no_timing_options_form(self):
+        entry = SimpleNamespace(
+            data={"actuator_mode": "native_cover"},
+            options={},
+        )
+        flow = RollupOptionsFlow()
+        flow.handler = "native-support"
+        flow.hass = SimpleNamespace(
+            config_entries=SimpleNamespace(
+                async_get_known_entry=lambda _entry_id: entry,
+            )
+        )
+
+        result = await flow.async_step_init()
+
+        self.assertEqual(result["type"].value, "abort")
+        self.assertEqual(result["reason"], "native_cover_no_settings")
+
     async def test_reconfigure_updates_identity_sources_and_timings_in_one_flow(self):
         entry = SimpleNamespace(
             entry_id="current",
@@ -115,7 +173,10 @@ class ReconfigureFlowTest(IsolatedAsyncioTestCase):
         self.assertIs(captured["entry"], entry)
         self.assertEqual(captured["title"], "East rollup")
         self.assertEqual(captured["unique_id"], "switch.new_close::switch.new_open")
-        self.assertEqual(captured["data"], user_input)
+        self.assertEqual(
+            captured["data"],
+            {**user_input, "actuator_mode": "dual_switch"},
+        )
         self.assertEqual(captured["options"], {})
 
 

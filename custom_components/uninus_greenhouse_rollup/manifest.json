@@ -5,9 +5,9 @@
   "config_flow": true,
   "dependencies": ["http"],
   "documentation": "https://github.com/ivanlee1007/uninus-greenhouse-rollup",
-  "integration_type": "helper",
+  "integration_type": "service",
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/ivanlee1007/uninus-greenhouse-rollup/issues",
   "requirements": [],
-  "version": "2.1.0"
+  "version": "2.2.0"
 }
