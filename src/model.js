@@ -151,7 +151,7 @@ function resolveIntegrationCoverState(face, cover) {
     ? '控制衝突'
     : managedCover && commandState === 'opening_timer' && percent >= 100
       ? '已全開'
-      : managedCover && commandState === 'closing_timer' && percent <= 0
+      : managedCover && positionKnown && commandState === 'closing_timer' && percent <= 0
         ? '已全關'
         : motion === 'opening' ? '開啟中' : motion === 'closing' ? '關閉中' : '靜止';
   const commandLabel = !managedCover

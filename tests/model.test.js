@@ -141,6 +141,40 @@ test('integration cover safely reports unknown and unavailable positions', () =>
   assert.equal(unavailable.available, false);
 });
 
+test('managed Cover with unknown position does not claim a closing endpoint', () => {
+  const state = resolveFaceState({ cover_entity: 'cover.unknown' }, {
+    'cover.unknown': {
+      state: 'closing',
+      attributes: {
+        command_state: 'closing_timer',
+        position_confidence: 'unknown',
+        position_is_estimated: true,
+      },
+    },
+  });
+
+  assert.equal(state.positionKnown, false);
+  assert.equal(state.motionLabel, '關閉中');
+  assert.equal(state.positionLabel, '位置尚未校正');
+});
+
+test('managed Cover with unknown position does not claim an opening endpoint', () => {
+  const state = resolveFaceState({ cover_entity: 'cover.unknown' }, {
+    'cover.unknown': {
+      state: 'opening',
+      attributes: {
+        command_state: 'opening_timer',
+        position_confidence: 'unknown',
+        position_is_estimated: true,
+      },
+    },
+  });
+
+  assert.equal(state.positionKnown, false);
+  assert.equal(state.motionLabel, '開啟中');
+  assert.equal(state.positionLabel, '位置尚未校正');
+});
+
 test('native MQTT cover uses reported position without estimator-specific metadata', () => {
   const state = resolveFaceState({ cover_entity: 'cover.native' }, {
     'cover.native': {
