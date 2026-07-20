@@ -107,26 +107,8 @@ class UninusGreenhouseRollupConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
     VERSION = 2
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Choose between direct native Covers and a legacy switch adapter."""
-        if user_input is not None:
-            return await self.async_step_legacy_switch_pair(user_input)
-        return self.async_show_menu(
-            step_id="user",
-            menu_options=["native_cover", "legacy_switch_pair"],
-        )
-
-    async def async_step_native_cover(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Enable the bundled card for direct use with native MQTT Covers."""
-        if user_input is not None:
-            await self.async_set_unique_id("native_cover_support")
-            self._abort_if_unique_id_configured()
-            return self.async_create_entry(
-                title="Native MQTT Cover support",
-                data={CONF_ACTUATOR_MODE: ACTUATOR_MODE_NATIVE_COVER},
-            )
-        return self.async_show_form(step_id="native_cover", data_schema=vol.Schema({}))
+        """Create one remembered Cover from a legacy pair of switches."""
+        return await self.async_step_legacy_switch_pair(user_input)
 
     async def async_step_legacy_switch_pair(
         self, user_input: dict[str, Any] | None = None

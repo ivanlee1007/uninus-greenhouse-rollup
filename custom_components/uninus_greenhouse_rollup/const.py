@@ -16,4 +16,3 @@ CONF_REVERSE_DEAD_TIME = "reverse_dead_time"
 DEFAULT_OPEN_TRAVEL_TIME = 120
 DEFAULT_CLOSE_TRAVEL_TIME = 120
 DEFAULT_REVERSE_DEAD_TIME = 0.2
-CARD_URL = "/uninus-greenhouse-rollup/uninus-greenhouse-rollup-card.js"

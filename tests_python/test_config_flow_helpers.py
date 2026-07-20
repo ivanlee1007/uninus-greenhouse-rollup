@@ -79,28 +79,13 @@ class ConfigFlowHelperTest(TestCase):
 
 @skipIf(UninusGreenhouseRollupConfigFlow is None, "Home Assistant test dependency not installed")
 class ReconfigureFlowTest(IsolatedAsyncioTestCase):
-    async def test_user_step_offers_native_cover_and_legacy_switch_paths(self):
+    async def test_user_step_opens_the_legacy_switch_form_directly(self):
         flow = UninusGreenhouseRollupConfigFlow()
 
         result = await flow.async_step_user()
 
-        self.assertEqual(result["type"].value, "menu")
-        self.assertEqual(result["step_id"], "user")
-        self.assertEqual(
-            result["menu_options"],
-            ["native_cover", "legacy_switch_pair"],
-        )
-
-    async def test_native_cover_path_creates_one_frontend_support_entry(self):
-        flow = UninusGreenhouseRollupConfigFlow()
-        flow.async_set_unique_id = AsyncMock()
-        flow._abort_if_unique_id_configured = lambda: None
-
-        result = await flow.async_step_native_cover({})
-
-        flow.async_set_unique_id.assert_awaited_once_with("native_cover_support")
-        self.assertEqual(result["type"].value, "create_entry")
-        self.assertEqual(result["data"], {"actuator_mode": "native_cover"})
+        self.assertEqual(result["type"].value, "form")
+        self.assertEqual(result["step_id"], "legacy_switch_pair")
 
     async def test_native_support_entry_has_no_relay_reconfigure_form(self):
         entry = SimpleNamespace(

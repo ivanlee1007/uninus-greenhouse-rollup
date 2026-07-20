@@ -34,7 +34,6 @@ class EntryModeLifecycleTest(unittest.IsolatedAsyncioTestCase):
     def _hass(self):
         return SimpleNamespace(
             data={},
-            http=SimpleNamespace(async_register_static_paths=AsyncMock()),
             config_entries=SimpleNamespace(
                 async_forward_entry_setups=AsyncMock(),
                 async_unload_platforms=AsyncMock(return_value=True),
@@ -42,7 +41,7 @@ class EntryModeLifecycleTest(unittest.IsolatedAsyncioTestCase):
             ),
         )
 
-    async def test_native_cover_support_registers_card_without_relay_or_cover_platform(self):
+    async def test_existing_native_cover_support_entry_remains_a_compatible_no_op(self):
         hass = self._hass()
         entry = SimpleNamespace(
             entry_id="native-support",
@@ -52,7 +51,6 @@ class EntryModeLifecycleTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(await async_setup_entry(hass, entry))
 
-        hass.http.async_register_static_paths.assert_awaited_once()
         hass.config_entries.async_forward_entry_setups.assert_not_awaited()
         self.assertEqual(hass.data[DOMAIN]["relay_owners"], {})
         self.assertTrue(await async_unload_entry(hass, entry))

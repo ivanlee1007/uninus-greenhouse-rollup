@@ -11,24 +11,15 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-          cache: npm
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.14'
       - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
         with:
           enable-cache: true
-      - run: npm ci
       - run: uv run --with 'homeassistant==2026.7.2' python -m unittest discover -s tests_python -v
       - run: python -m compileall -q custom_components
-      - run: npm test
-      - run: npm run build
-      - run: node --check uninus-greenhouse-rollup-card.js
-      - run: git diff --exit-code -- uninus-greenhouse-rollup-card.js custom_components/uninus_greenhouse_rollup/www/uninus-greenhouse-rollup-card.js
-      - run: npm audit --audit-level=high
+      - run: git diff --check
 
   hassfest:
     runs-on: ubuntu-latest

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -13,7 +11,6 @@ if TYPE_CHECKING:
 from .const import (
     ACTUATOR_MODE_DUAL_SWITCH,
     ACTUATOR_MODE_NATIVE_COVER,
-    CARD_URL,
     CONF_ACTUATOR_MODE,
     CONF_CLOSE_ENTITY,
     CONF_OPEN_ENTITY,
@@ -22,8 +19,6 @@ from .const import (
 )
 
 _OWNERS_KEY = "relay_owners"
-_FRONTEND_LOCK_KEY = "frontend_lock"
-_FRONTEND_REGISTERED_KEY = "frontend_registered"
 
 
 def _entry_mode(data: dict) -> str:
@@ -54,13 +49,11 @@ def _release_relay_ownership(owners: dict[str, str], entry_id: str) -> None:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up a greenhouse roll-up and its bundled dashboard card."""
-    from homeassistant.components.http import StaticPathConfig
+    """Set up a legacy greenhouse roll-up adapter entry."""
     from homeassistant.exceptions import ConfigEntryError
 
     domain_data = hass.data.setdefault(DOMAIN, {})
     owners = domain_data.setdefault(_OWNERS_KEY, {})
-    frontend_lock = domain_data.setdefault(_FRONTEND_LOCK_KEY, asyncio.Lock())
     data = {**entry.data, **entry.options}
     mode = _entry_mode(data)
     if mode not in (ACTUATOR_MODE_DUAL_SWITCH, ACTUATOR_MODE_NATIVE_COVER):
@@ -77,16 +70,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
 
     try:
-        async with frontend_lock:
-            if not domain_data.get(_FRONTEND_REGISTERED_KEY):
-                card_path = (
-                    Path(__file__).parent / "www" / "uninus-greenhouse-rollup-card.js"
-                )
-                await hass.http.async_register_static_paths(
-                    [StaticPathConfig(CARD_URL, str(card_path), cache_headers=True)]
-                )
-                domain_data[_FRONTEND_REGISTERED_KEY] = True
-
         if owns_relays:
             await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     except Exception:

@@ -4,15 +4,7 @@
     "step": {
       "user": {
         "title": "Set up UNiNUS Greenhouse Rollup",
-        "description": "Use a native MQTT Cover directly, or adapt two legacy switches into a safe remembered Cover.",
-        "menu_options": {
-          "native_cover": "New device: use a native MQTT Cover directly",
-          "legacy_switch_pair": "Legacy device: combine two switches into a Cover"
-        }
-      },
-      "native_cover": {
-        "title": "Enable native MQTT Cover support",
-        "description": "This does not create a proxy Cover or control relays. After finishing, select the device's cover.* entity directly in the UNiNUS Card."
+        "description": "Adapt a legacy device's mutually exclusive switches into a standard Cover with safety interlock and estimated position."
       },
       "legacy_switch_pair": {
         "title": "Add legacy dual-switch roll-up",
@@ -44,7 +36,7 @@
       "switch_in_use": "One of these switches is already used by another roll-up."
     },
     "abort": {
-      "already_configured": "This switch pair or native Cover support is already configured.",
+      "already_configured": "This switch pair is already configured.",
       "reconfigure_successful": "The roll-up configuration was updated.",
       "native_cover_no_settings": "The native MQTT Cover is managed by the MQTT integration; UNiNUS does not proxy or duplicate its settings."
     }

@@ -1,6 +1,5 @@
 """Tests for runtime relay ownership enforcement and entry lifecycle."""
 
-import asyncio
 from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock
@@ -65,7 +64,6 @@ class RuntimeOwnershipLifecycleTest(unittest.IsolatedAsyncioTestCase):
     def _hass(self):
         return SimpleNamespace(
             data={},
-            http=SimpleNamespace(async_register_static_paths=AsyncMock()),
             config_entries=SimpleNamespace(
                 async_forward_entry_setups=AsyncMock(),
                 async_unload_platforms=AsyncMock(return_value=True),
@@ -93,25 +91,6 @@ class RuntimeOwnershipLifecycleTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(RuntimeError):
             await async_setup_entry(hass, entry)
         self.assertEqual(hass.data[DOMAIN]["relay_owners"], {})
-
-    async def test_concurrent_entry_setup_registers_frontend_once(self):
-        hass = self._hass()
-
-        async def delayed_registration(_paths):
-            await asyncio.sleep(0.01)
-
-        hass.http.async_register_static_paths.side_effect = delayed_registration
-        first = self._entry("entry-a", "switch.open_a", "switch.close_a")
-        second = self._entry("entry-b", "switch.open_b", "switch.close_b")
-
-        results = await asyncio.gather(
-            async_setup_entry(hass, first),
-            async_setup_entry(hass, second),
-        )
-
-        self.assertEqual(results, [True, True])
-        hass.http.async_register_static_paths.assert_awaited_once()
-
 
 if __name__ == "__main__":
     unittest.main()

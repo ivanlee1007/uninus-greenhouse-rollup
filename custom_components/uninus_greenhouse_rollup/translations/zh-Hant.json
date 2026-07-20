@@ -4,15 +4,7 @@
     "step": {
       "user": {
         "title": "設定 UNiNUS 溫室捲揚",
-        "description": "新版 MQTT Cover 可直接供卡片使用；舊版雙 Switch 可建立具有安全互鎖與位置估算的 Cover。",
-        "menu_options": {
-          "native_cover": "新版：直接使用原生 MQTT Cover",
-          "legacy_switch_pair": "舊版：將兩個 Switch 組合成 Cover"
-        }
-      },
-      "native_cover": {
-        "title": "啟用原生 MQTT Cover 支援",
-        "description": "這不會建立代理 Cover，也不會控制底層 Relay。完成後，請在 UNiNUS Card 直接選擇裝置提供的 cover.* Entity。"
+        "description": "將舊版裝置的互斥雙 Switch 建立為具有安全互鎖與位置估算的標準 Cover。"
       },
       "legacy_switch_pair": {
         "title": "新增舊版雙 Switch 捲揚",
@@ -44,7 +36,7 @@
       "switch_in_use": "其中一個 Switch 已由其他捲揚使用。"
     },
     "abort": {
-      "already_configured": "這組 Switch 或原生 Cover 支援已經設定。",
+      "already_configured": "這組 Switch 已經設定。",
       "reconfigure_successful": "捲揚設定已更新。",
       "native_cover_no_settings": "原生 MQTT Cover 由 MQTT Integration 管理，UNiNUS 不會建立代理或重複設定。"
     }
