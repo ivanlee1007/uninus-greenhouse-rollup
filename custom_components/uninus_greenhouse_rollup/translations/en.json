@@ -15,7 +15,11 @@
           "close_entity": "Close switch",
           "open_travel_time": "Full opening travel time (seconds)",
           "close_travel_time": "Full closing travel time (seconds)",
-          "reverse_dead_time": "Direction-change safety delay (seconds)"
+          "reverse_dead_time": "Direction-change safety delay (seconds)",
+          "auto_stop_at_travel_end": "Turn off both direction switches when travel ends"
+        },
+        "data_description": {
+          "auto_stop_at_travel_end": "When enabled, a full-open or full-close command from this Cover turns off both the open and close switches after the configured travel time."
         }
       },
       "reconfigure": {
@@ -27,7 +31,11 @@
           "close_entity": "Close switch",
           "open_travel_time": "Full opening travel time (seconds)",
           "close_travel_time": "Full closing travel time (seconds)",
-          "reverse_dead_time": "Direction-change safety delay (seconds)"
+          "reverse_dead_time": "Direction-change safety delay (seconds)",
+          "auto_stop_at_travel_end": "Turn off both direction switches when travel ends"
+        },
+        "data_description": {
+          "auto_stop_at_travel_end": "When enabled, a full-open or full-close command from this Cover turns off both the open and close switches after the configured travel time."
         }
       }
     },
@@ -48,7 +56,11 @@
         "data": {
           "open_travel_time": "Full opening travel time (seconds)",
           "close_travel_time": "Full closing travel time (seconds)",
-          "reverse_dead_time": "Direction-change safety delay (seconds)"
+          "reverse_dead_time": "Direction-change safety delay (seconds)",
+          "auto_stop_at_travel_end": "Turn off both direction switches when travel ends"
+        },
+        "data_description": {
+          "auto_stop_at_travel_end": "When enabled, a full-open or full-close command from this Cover turns off both direction switches after the configured travel time. Existing entries default to off to preserve their current behavior."
         }
       }
     },

@@ -12,7 +12,8 @@
 
 - Integration 從上次保存位置、方向、經過時間及完整行程秒數估算位置。
 - 中途將方向 switch 關閉時，位置會停在當下估算值並保存。
-- 到達估算 `0%`／`100%` 後停止顯示運動，即使底層 switch 仍在計時。
+- 未啟用自動斷電時，到達估算 `0%`／`100%` 後停止顯示運動，即使底層 switch 仍在計時。
+- 可明確啟用「行程結束後自動關閉兩個方向 Switch」，由 Integration 在行程時間到達後執行斷電。
 - 完整跑完一次全開或全關行程即可校正端點。
 - 位置會由 Home Assistant `RestoreEntity` 保存；重新整理卡片或更換瀏覽器不會遺失。
 - 沒有實體位置感測器，因此 UI 一律明確標示「估算位置」與可信度。
@@ -62,11 +63,25 @@ Lovelace 卡片已移至 [ivanlee1007/uninus-greenhouse-rollup-card](https://git
 - 關閉／下捲 Switch；
 - 全開行程秒數；
 - 全關行程秒數；
-- 方向切換安全間隔秒數（預設 `0.2` 秒）。
+- 方向切換安全間隔秒數（預設 `0.2` 秒）；
+- 行程結束後自動關閉兩個方向 Switch（既有設定預設關閉，以維持原行為）。
 
 東、南、西、北分別重複新增。從整合的 Config Entry 選擇**重新設定**，即可修改來源 Switch、名稱、行程時間與安全間隔。
 
 首次安裝時位置為未知。讓捲揚在任一方向完整執行一次設定的行程時間後，Integration 會將端點校正為 `0%` 或 `100%`。
+
+### 行程結束自動斷電
+
+啟用「**行程結束後自動關閉兩個方向 Switch**」後，透過這個 Cover 執行全開或全關時，Integration 會從成功啟動方向 Switch 起計時：
+
+- 全開使用「全開行程秒數」，全關使用「全關行程秒數」；
+- 時間到達後，對開啟與關閉 Switch **都**執行 `switch.turn_off`，避免任一方向殘留通電；
+- 中途按停止、改變方向、重新載入或卸載 Integration 時，舊的自動斷電計時會取消，不會誤停後續的新方向命令；
+- 若第一個 Switch 關閉失敗，仍會嘗試關閉第二個並在 Home Assistant 記錄錯誤。
+
+此選項只保護**透過 Integration 產生的 Cover 所啟動**的行程。直接對底層來源 Switch 呼叫 `turn_on` 不會建立 Cover 的行程計時；硬體與 Automation 應統一使用 `cover.open_cover`／`cover.close_cover`／`cover.stop_cover`。
+
+既有 Config Entry 缺少此欄位時一律視為關閉，不會因升級而改變原本的來源 Switch 計時行為。可從 Integration 的「設定」或「重新設定」啟用，儲存後會重新載入該捲揚。
 
 ## 狀態語意
 
@@ -75,8 +90,8 @@ Lovelace 卡片已移至 [ivanlee1007/uninus-greenhouse-rollup-card](https://git
 | `idle` | 兩個底層 switch 都是 `off` |
 | `opening` | 開啟命令中，位置尚未到 100% |
 | `closing` | 關閉命令中，位置尚未到 0% |
-| `opening_timer` | 已估算全開，但開啟 switch 仍在計時 |
-| `closing_timer` | 已估算全關，但關閉 switch 仍在計時 |
+| `opening_timer` | 已估算全開，但開啟 switch 仍在計時；未啟用自動斷電或直接操作來源 Switch 時可能出現 |
+| `closing_timer` | 已估算全關，但關閉 switch 仍在計時；未啟用自動斷電或直接操作來源 Switch 時可能出現 |
 | `conflict` | 開啟與關閉 switch 同時為 `on` |
 | `unavailable` | 任一底層 switch 不可用 |
 

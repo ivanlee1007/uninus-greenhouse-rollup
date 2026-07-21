@@ -36,11 +36,13 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import (
+    CONF_AUTO_STOP_AT_TRAVEL_END,
     CONF_CLOSE_ENTITY,
     CONF_CLOSE_TRAVEL_TIME,
     CONF_OPEN_ENTITY,
     CONF_OPEN_TRAVEL_TIME,
     CONF_REVERSE_DEAD_TIME,
+    DEFAULT_AUTO_STOP_AT_TRAVEL_END,
     DEFAULT_REVERSE_DEAD_TIME,
     DOMAIN,
 )
@@ -81,6 +83,9 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         self._reverse_dead_time = max(
             0.0, float(data.get(CONF_REVERSE_DEAD_TIME, DEFAULT_REVERSE_DEAD_TIME))
         )
+        self._auto_stop_at_travel_end = bool(
+            data.get(CONF_AUTO_STOP_AT_TRAVEL_END, DEFAULT_AUTO_STOP_AT_TRAVEL_END)
+        )
         self._estimator = RollupEstimator(
             self._open_travel_time,
             self._close_travel_time,
@@ -90,6 +95,10 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         self._command_generation = 0
         self._conflict_stop_pending = False
         self._conflict_stop_task: asyncio.Task[None] | None = None
+        self._auto_stop_task: asyncio.Task[None] | None = None
+        self._auto_stop_target_entity: str | None = None
+        self._auto_stop_target_confirmed = False
+        self._removing = False
         self._attr_unique_id = entry.entry_id
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
@@ -134,6 +143,9 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
     @callback
     def _handle_state_event(self, event: Event) -> None:
         """Synchronize after direct, automation, or card switch changes."""
+        if self._removing:
+            return
+        self._cancel_auto_stop_if_source_changed(event)
         self._sync_from_switches()
         self.async_write_ha_state()
         if (
@@ -219,6 +231,7 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
             "open_travel_time": self._open_travel_time,
             "close_travel_time": self._close_travel_time,
             "reverse_dead_time": self._reverse_dead_time,
+            "auto_stop_at_travel_end": self._auto_stop_at_travel_end,
             "position_is_estimated": True,
         }
 
@@ -233,52 +246,194 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
     async def async_stop_cover(self, **kwargs: Any) -> None:
         """Stop either direction and freeze the current estimate."""
         self._command_generation += 1
-        async with self._command_lock:
-            await self._async_turn_both_off()
+        self._cancel_auto_stop_task()
+        try:
+            async with self._command_lock:
+                await self._async_turn_both_off()
+        except asyncio.CancelledError as cancellation:
+            await self._async_cleanup_cancelled_command()
+            raise cancellation
         self._sync_from_switches()
         self.async_write_ha_state()
 
     async def async_will_remove_from_hass(self) -> None:
         """Leave both actuators in a safe state on unload or reload."""
+        self._removing = True
         self._command_generation += 1
+        auto_stop_task = self._auto_stop_task
+        self._cancel_auto_stop_task()
         conflict_task = self._conflict_stop_task
         self._conflict_stop_task = None
-        if conflict_task is not None:
-            if not conflict_task.done():
-                conflict_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await conflict_task
-        stop_error: Exception | None = None
         try:
-            async with self._command_lock:
-                await self._async_turn_both_off()
-        except Exception as error:
-            stop_error = error
-        finally:
-            await super().async_will_remove_from_hass()
-        if stop_error is not None:
-            raise stop_error
+            if conflict_task is not None:
+                if not conflict_task.done():
+                    conflict_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await conflict_task
+            if auto_stop_task is not None:
+                with suppress(asyncio.CancelledError):
+                    await auto_stop_task
+            stop_error: Exception | None = None
+            try:
+                async with self._command_lock:
+                    await self._async_turn_both_off()
+            except Exception as error:
+                stop_error = error
+            finally:
+                await super().async_will_remove_from_hass()
+            if stop_error is not None:
+                raise stop_error
+        except asyncio.CancelledError as cancellation:
+            await self._async_cleanup_cancelled_command()
+            raise cancellation
 
     async def _async_run_direction(self, target_entity: str) -> None:
+        if self._removing:
+            return
         self._command_generation += 1
+        self._cancel_auto_stop_task()
         generation = self._command_generation
-        async with self._command_lock:
-            await self._async_turn_both_off()
-            if self._reverse_dead_time:
-                await asyncio.sleep(self._reverse_dead_time)
-                if generation != self._command_generation:
-                    return
-                await self._async_turn_both_off()
+        try:
+            async with self._command_lock:
+                await self._async_run_direction_locked(target_entity, generation)
+        except asyncio.CancelledError as cancellation:
+            await self._async_cleanup_cancelled_command()
+            raise cancellation
+
+    async def _async_run_direction_locked(
+        self, target_entity: str, generation: int
+    ) -> None:
+        """Start one direction while the command lock is held."""
+        if self._removing or generation != self._command_generation:
+            return
+        await self._async_turn_both_off()
+        if self._reverse_dead_time:
+            await asyncio.sleep(self._reverse_dead_time)
             if generation != self._command_generation:
                 return
+            await self._async_turn_both_off()
+        if generation != self._command_generation:
+            return
+        try:
+            await self._async_turn_on(target_entity)
+        except Exception:
             try:
-                await self._async_turn_on(target_entity)
+                await self._async_turn_both_off()
             except Exception:
-                try:
-                    await self._async_turn_both_off()
-                except Exception:
-                    _LOGGER.exception("Failed to clean up relays after direction start failure")
-                raise
+                _LOGGER.exception("Failed to clean up relays after direction start failure")
+            raise
+        if (
+            self._auto_stop_at_travel_end
+            and not self._removing
+            and generation == self._command_generation
+        ):
+            duration = (
+                self._open_travel_time
+                if target_entity == self._open_entity
+                else self._close_travel_time
+            )
+            self._auto_stop_target_entity = target_entity
+            self._auto_stop_target_confirmed = False
+            self._auto_stop_task = self.hass.async_create_task(
+                self._async_auto_stop_after(duration, generation)
+            )
+
+    async def _async_cleanup_cancelled_command(self) -> None:
+        """Fail safe after a command that already invalidated the active generation."""
+        cleanup_task = self.hass.async_create_task(
+            self._async_turn_both_off_after_lock()
+        )
+        while not cleanup_task.done():
+            try:
+                await asyncio.shield(cleanup_task)
+            except asyncio.CancelledError:
+                continue
+        try:
+            cleanup_task.result()
+        except asyncio.CancelledError:
+            _LOGGER.error("Relay cleanup was cancelled after command cancellation")
+        except Exception:
+            _LOGGER.exception("Failed to clean up relays after command cancellation")
+
+    async def _async_turn_both_off_after_lock(self) -> None:
+        """Acquire command ownership before de-energizing both directions."""
+        async with self._command_lock:
+            await self._async_turn_both_off()
+
+    async def _async_auto_stop_after(self, duration: float, generation: int) -> None:
+        """De-energize both direction switches after one configured travel time."""
+        try:
+            await asyncio.sleep(duration)
+            if generation != self._command_generation:
+                return
+            async with self._command_lock:
+                if generation != self._command_generation:
+                    return
+                self._auto_stop_target_entity = None
+                self._auto_stop_target_confirmed = False
+                await self._async_turn_both_off()
+            self._sync_from_switches()
+            self.async_write_ha_state()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            _LOGGER.exception("Failed to auto-stop greenhouse roll-up relays")
+        finally:
+            if self._auto_stop_task is asyncio.current_task():
+                self._auto_stop_task = None
+                self._auto_stop_target_entity = None
+                self._auto_stop_target_confirmed = False
+
+    @callback
+    def _cancel_auto_stop_if_source_changed(self, event: Event | None = None) -> None:
+        target_entity = self._auto_stop_target_entity
+        if self._auto_stop_task is None or target_entity is None:
+            return
+        opposite_entity = (
+            self._close_entity
+            if target_entity == self._open_entity
+            else self._open_entity
+        )
+        event_data = event.data if event is not None else {}
+        event_entity = event_data.get("entity_id")
+        old_state = event_data.get("old_state")
+        new_state = event_data.get("new_state")
+        if event_entity == opposite_entity and getattr(new_state, "state", None) == STATE_ON:
+            self._command_generation += 1
+            self._cancel_auto_stop_task()
+            return
+        if event_entity == target_entity:
+            old_value = getattr(old_state, "state", None)
+            new_value = getattr(new_state, "state", None)
+            if old_value == STATE_ON and new_value != STATE_ON:
+                self._command_generation += 1
+                self._cancel_auto_stop_task()
+                return
+            if new_value == STATE_ON:
+                self._auto_stop_target_confirmed = True
+                return
+        target_state = self.hass.states.get(target_entity)
+        opposite_state = self.hass.states.get(opposite_entity)
+        if opposite_state is not None and opposite_state.state == STATE_ON:
+            self._command_generation += 1
+            self._cancel_auto_stop_task()
+            return
+        if target_state is not None and target_state.state == STATE_ON:
+            self._auto_stop_target_confirmed = True
+            return
+        if not self._auto_stop_target_confirmed:
+            return
+        self._command_generation += 1
+        self._cancel_auto_stop_task()
+
+    @callback
+    def _cancel_auto_stop_task(self) -> None:
+        task = self._auto_stop_task
+        self._auto_stop_task = None
+        self._auto_stop_target_entity = None
+        self._auto_stop_target_confirmed = False
+        if task is not None and task is not asyncio.current_task() and not task.done():
+            task.cancel()
 
     async def _async_stop_active_relays_on_startup(self) -> None:
         """Never resume a stale or unverifiable relay command after HA was offline."""
@@ -287,6 +442,7 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
 
     async def _async_fail_safe_stop(self) -> None:
         self._command_generation += 1
+        self._cancel_auto_stop_task()
         try:
             async with self._command_lock:
                 await self._async_turn_both_off()
@@ -298,7 +454,7 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
                 self._conflict_stop_task = None
 
     async def _async_turn_both_off(self) -> None:
-        first_error: Exception | None = None
+        first_error: BaseException | None = None
         for entity_id in (self._open_entity, self._close_entity):
             try:
                 await self.hass.services.async_call(
@@ -308,7 +464,7 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
                     blocking=True,
                     context=self._context,
                 )
-            except Exception as error:
+            except (Exception, asyncio.CancelledError) as error:
                 if first_error is None:
                     first_error = error
         if first_error is not None:

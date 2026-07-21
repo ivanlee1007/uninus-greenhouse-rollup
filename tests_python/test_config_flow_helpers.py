@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase, skipIf
-from unittest.mock import AsyncMock
+
 
 try:
     from custom_components.uninus_greenhouse_rollup.config_flow import (
@@ -118,6 +118,32 @@ class ReconfigureFlowTest(IsolatedAsyncioTestCase):
 
         self.assertEqual(result["type"].value, "abort")
         self.assertEqual(result["reason"], "native_cover_no_settings")
+
+    async def test_existing_entry_options_default_auto_stop_to_off(self):
+        entry = SimpleNamespace(
+            data={
+                "actuator_mode": "dual_switch",
+                "open_travel_time": 120,
+                "close_travel_time": 120,
+                "reverse_dead_time": 0.2,
+            },
+            options={},
+        )
+        flow = RollupOptionsFlow()
+        flow.handler = "current"
+        flow.hass = SimpleNamespace(
+            config_entries=SimpleNamespace(
+                async_get_known_entry=lambda _entry_id: entry,
+            )
+        )
+
+        result = await flow.async_step_init()
+        defaults = {
+            marker.schema: marker.default()
+            for marker in result["data_schema"].schema
+        }
+
+        self.assertIs(defaults["auto_stop_at_travel_end"], False)
 
     async def test_reconfigure_updates_identity_sources_and_timings_in_one_flow(self):
         entry = SimpleNamespace(

@@ -28,6 +28,33 @@ class IntegrationContractTest(unittest.TestCase):
         ):
             self.assertIn(marker, source)
 
+    def test_auto_stop_at_travel_end_is_an_explicit_config_and_options_setting(self):
+        source = (INTEGRATION / "config_flow.py").read_text(encoding="utf-8")
+        self.assertIn("CONF_AUTO_STOP_AT_TRAVEL_END", source)
+        self.assertIn("DEFAULT_AUTO_STOP_AT_TRAVEL_END", source)
+
+        for path in (
+            INTEGRATION / "strings.json",
+            INTEGRATION / "translations" / "en.json",
+            INTEGRATION / "translations" / "zh-Hant.json",
+        ):
+            strings = json.loads(path.read_text(encoding="utf-8"))
+            self.assertIn(
+                "auto_stop_at_travel_end",
+                strings["config"]["step"]["legacy_switch_pair"]["data"],
+                path.name,
+            )
+            self.assertIn(
+                "auto_stop_at_travel_end",
+                strings["config"]["step"]["reconfigure"]["data"],
+                path.name,
+            )
+            self.assertIn(
+                "auto_stop_at_travel_end",
+                strings["options"]["step"]["init"]["data"],
+                path.name,
+            )
+
     def test_config_flow_only_offers_the_legacy_switch_adapter(self):
         source = (INTEGRATION / "config_flow.py").read_text(encoding="utf-8")
         for marker in (

@@ -15,7 +15,11 @@
           "close_entity": "關閉 Switch",
           "open_travel_time": "全開行程秒數",
           "close_travel_time": "全關行程秒數",
-          "reverse_dead_time": "方向切換安全間隔秒數"
+          "reverse_dead_time": "方向切換安全間隔秒數",
+          "auto_stop_at_travel_end": "行程結束後自動關閉兩個方向 Switch"
+        },
+        "data_description": {
+          "auto_stop_at_travel_end": "啟用後，由此 Cover 啟動全開或全關時，設定的行程秒數到達後會對開啟與關閉 Switch 都執行 turn_off。"
         }
       },
       "reconfigure": {
@@ -27,7 +31,11 @@
           "close_entity": "關閉 Switch",
           "open_travel_time": "全開行程秒數",
           "close_travel_time": "全關行程秒數",
-          "reverse_dead_time": "方向切換安全間隔秒數"
+          "reverse_dead_time": "方向切換安全間隔秒數",
+          "auto_stop_at_travel_end": "行程結束後自動關閉兩個方向 Switch"
+        },
+        "data_description": {
+          "auto_stop_at_travel_end": "啟用後，由此 Cover 啟動全開或全關時，設定的行程秒數到達後會對開啟與關閉 Switch 都執行 turn_off。"
         }
       }
     },
@@ -48,7 +56,11 @@
         "data": {
           "open_travel_time": "全開行程秒數",
           "close_travel_time": "全關行程秒數",
-          "reverse_dead_time": "方向切換安全間隔秒數"
+          "reverse_dead_time": "方向切換安全間隔秒數",
+          "auto_stop_at_travel_end": "行程結束後自動關閉兩個方向 Switch"
+        },
+        "data_description": {
+          "auto_stop_at_travel_end": "啟用後，由此 Cover 啟動全開或全關時，設定的行程秒數到達後會對開啟與關閉 Switch 都執行 turn_off。既有設定預設關閉，以維持原行為。"
         }
       }
     },

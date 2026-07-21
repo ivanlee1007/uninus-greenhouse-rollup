@@ -15,11 +15,13 @@ from .const import (
     ACTUATOR_MODE_DUAL_SWITCH,
     ACTUATOR_MODE_NATIVE_COVER,
     CONF_ACTUATOR_MODE,
+    CONF_AUTO_STOP_AT_TRAVEL_END,
     CONF_CLOSE_ENTITY,
     CONF_CLOSE_TRAVEL_TIME,
     CONF_OPEN_ENTITY,
     CONF_OPEN_TRAVEL_TIME,
     CONF_REVERSE_DEAD_TIME,
+    DEFAULT_AUTO_STOP_AT_TRAVEL_END,
     DEFAULT_CLOSE_TRAVEL_TIME,
     DEFAULT_OPEN_TRAVEL_TIME,
     DEFAULT_REVERSE_DEAD_TIME,
@@ -97,6 +99,13 @@ def _schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
                 CONF_REVERSE_DEAD_TIME,
                 default=values.get(CONF_REVERSE_DEAD_TIME, DEFAULT_REVERSE_DEAD_TIME),
             ): _dead_time_selector(),
+            vol.Required(
+                CONF_AUTO_STOP_AT_TRAVEL_END,
+                default=values.get(
+                    CONF_AUTO_STOP_AT_TRAVEL_END,
+                    DEFAULT_AUTO_STOP_AT_TRAVEL_END,
+                ),
+            ): selector.BooleanSelector(),
         }
     )
 
@@ -204,6 +213,13 @@ class RollupOptionsFlow(config_entries.OptionsFlowWithReload):
                     CONF_REVERSE_DEAD_TIME,
                     default=current.get(CONF_REVERSE_DEAD_TIME, DEFAULT_REVERSE_DEAD_TIME),
                 ): _dead_time_selector(),
+                vol.Required(
+                    CONF_AUTO_STOP_AT_TRAVEL_END,
+                    default=current.get(
+                        CONF_AUTO_STOP_AT_TRAVEL_END,
+                        DEFAULT_AUTO_STOP_AT_TRAVEL_END,
+                    ),
+                ): selector.BooleanSelector(),
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)
