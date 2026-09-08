@@ -14,13 +14,16 @@ from homeassistant.helpers import selector
 from .const import (
     ACTUATOR_MODE_DUAL_SWITCH,
     ACTUATOR_MODE_NATIVE_COVER,
+    ACTUATOR_TYPES,
     CONF_ACTUATOR_MODE,
+    CONF_ACTUATOR_TYPE,
     CONF_AUTO_STOP_AT_TRAVEL_END,
     CONF_CLOSE_ENTITY,
     CONF_CLOSE_TRAVEL_TIME,
     CONF_OPEN_ENTITY,
     CONF_OPEN_TRAVEL_TIME,
     CONF_REVERSE_DEAD_TIME,
+    DEFAULT_ACTUATOR_TYPE,
     DEFAULT_AUTO_STOP_AT_TRAVEL_END,
     DEFAULT_CLOSE_TRAVEL_TIME,
     DEFAULT_OPEN_TRAVEL_TIME,
@@ -31,6 +34,16 @@ from .const import (
 
 def _entity_selector() -> selector.EntitySelector:
     return selector.EntitySelector(selector.EntitySelectorConfig(domain=["switch"]))
+
+
+def _actuator_type_selector() -> selector.SelectSelector:
+    return selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=list(ACTUATOR_TYPES),
+            mode=selector.SelectSelectorMode.DROPDOWN,
+            translation_key="actuator_type",
+        )
+    )
 
 
 def _time_selector() -> selector.NumberSelector:
@@ -84,7 +97,11 @@ def _schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
     values = defaults or {}
     return vol.Schema(
         {
-            vol.Required(CONF_NAME, default=values.get(CONF_NAME, "溫室捲揚")): str,
+            vol.Required(CONF_NAME, default=values.get(CONF_NAME, "溫室致動器")): str,
+            vol.Required(
+                CONF_ACTUATOR_TYPE,
+                default=values.get(CONF_ACTUATOR_TYPE, DEFAULT_ACTUATOR_TYPE),
+            ): _actuator_type_selector(),
             vol.Required(CONF_OPEN_ENTITY, default=values.get(CONF_OPEN_ENTITY)): _entity_selector(),
             vol.Required(CONF_CLOSE_ENTITY, default=values.get(CONF_CLOSE_ENTITY)): _entity_selector(),
             vol.Required(
@@ -113,7 +130,7 @@ def _schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
 class UninusGreenhouseRollupConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Create one remembered cover from a pair of switch entities."""
 
-    VERSION = 2
+    VERSION = 3
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Create one remembered Cover from a legacy pair of switches."""
@@ -139,9 +156,14 @@ class UninusGreenhouseRollupConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
                 )
                 await self.async_set_unique_id(unique)
                 self._abort_if_unique_id_configured()
+                data = {
+                    **user_input,
+                    CONF_ACTUATOR_MODE: ACTUATOR_MODE_DUAL_SWITCH,
+                }
+                data.setdefault(CONF_ACTUATOR_TYPE, DEFAULT_ACTUATOR_TYPE)
                 return self.async_create_entry(
                     title=user_input[CONF_NAME],
-                    data={**user_input, CONF_ACTUATOR_MODE: ACTUATOR_MODE_DUAL_SWITCH},
+                    data=data,
                 )
         return self.async_show_form(
             step_id="legacy_switch_pair",
@@ -169,6 +191,14 @@ class UninusGreenhouseRollupConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
             ):
                 errors["base"] = "switch_in_use"
             else:
+                data = {
+                    **user_input,
+                    CONF_ACTUATOR_MODE: ACTUATOR_MODE_DUAL_SWITCH,
+                }
+                data.setdefault(
+                    CONF_ACTUATOR_TYPE,
+                    current.get(CONF_ACTUATOR_TYPE, DEFAULT_ACTUATOR_TYPE),
+                )
                 return self.async_update_reload_and_abort(
                     entry,
                     unique_id=_pair_unique_id(
@@ -176,7 +206,7 @@ class UninusGreenhouseRollupConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
                         user_input[CONF_CLOSE_ENTITY],
                     ),
                     title=user_input[CONF_NAME],
-                    data={**user_input, CONF_ACTUATOR_MODE: ACTUATOR_MODE_DUAL_SWITCH},
+                    data=data,
                     options={},
                 )
         return self.async_show_form(
@@ -201,6 +231,10 @@ class RollupOptionsFlow(config_entries.OptionsFlowWithReload):
             return self.async_create_entry(title="", data=user_input)
         schema = vol.Schema(
             {
+                vol.Required(
+                    CONF_ACTUATOR_TYPE,
+                    default=current.get(CONF_ACTUATOR_TYPE, DEFAULT_ACTUATOR_TYPE),
+                ): _actuator_type_selector(),
                 vol.Required(
                     CONF_OPEN_TRAVEL_TIME,
                     default=current[CONF_OPEN_TRAVEL_TIME],

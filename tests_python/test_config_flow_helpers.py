@@ -1,13 +1,21 @@
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase, skipIf
+from unittest.mock import AsyncMock
 
 
 try:
     from custom_components.uninus_greenhouse_rollup.config_flow import (
         RollupOptionsFlow,
         UninusGreenhouseRollupConfigFlow,
+        _actuator_type_selector,
         _pair_unique_id,
+        _schema,
         _switches_in_use,
+    )
+    from custom_components.uninus_greenhouse_rollup.const import (
+        ACTUATOR_TYPE_ROLLUP,
+        ACTUATOR_TYPES,
+        CONF_ACTUATOR_TYPE,
     )
 except (ModuleNotFoundError, ImportError) as error:
     if (
@@ -16,6 +24,8 @@ except (ModuleNotFoundError, ImportError) as error:
         and (error.name.startswith("homeassistant") or error.name == "voluptuous")
     ):
         _pair_unique_id = None
+        _actuator_type_selector = None
+        _schema = None
         _switches_in_use = None
         UninusGreenhouseRollupConfigFlow = None
         RollupOptionsFlow = None
@@ -27,6 +37,16 @@ except (ModuleNotFoundError, ImportError) as error:
 
 @skipIf(_pair_unique_id is None, "Home Assistant test dependency not installed")
 class ConfigFlowHelperTest(TestCase):
+    def test_actuator_type_defaults_to_rollup_and_only_offers_supported_types(self):
+        schema = _schema()
+        defaults = {marker.schema: marker.default() for marker in schema.schema}
+
+        self.assertEqual(defaults[CONF_ACTUATOR_TYPE], ACTUATOR_TYPE_ROLLUP)
+        self.assertEqual(
+            tuple(_actuator_type_selector().config["options"]),
+            ACTUATOR_TYPES,
+        )
+
     def test_pair_identity_is_independent_of_direction_order(self):
         self.assertEqual(
             _pair_unique_id("switch.a", "switch.b"),
@@ -79,6 +99,29 @@ class ConfigFlowHelperTest(TestCase):
 
 @skipIf(UninusGreenhouseRollupConfigFlow is None, "Home Assistant test dependency not installed")
 class ReconfigureFlowTest(IsolatedAsyncioTestCase):
+    async def test_create_persists_rollup_for_legacy_default_submission(self):
+        flow = UninusGreenhouseRollupConfigFlow()
+        flow._async_current_entries = lambda: []
+        flow.async_set_unique_id = AsyncMock()
+        flow._abort_if_unique_id_configured = lambda: None
+        captured = {}
+        flow.async_create_entry = lambda **kwargs: captured.update(kwargs) or {
+            "type": "create_entry"
+        }
+        user_input = {
+            "name": "Legacy actuator",
+            "open_entity": "switch.open",
+            "close_entity": "switch.close",
+            "open_travel_time": 120,
+            "close_travel_time": 120,
+            "reverse_dead_time": 0.2,
+            "auto_stop_at_travel_end": False,
+        }
+
+        await flow.async_step_legacy_switch_pair(user_input)
+
+        self.assertEqual(captured["data"]["actuator_type"], "rollup")
+
     async def test_user_step_opens_the_legacy_switch_form_directly(self):
         flow = UninusGreenhouseRollupConfigFlow()
 
@@ -145,6 +188,33 @@ class ReconfigureFlowTest(IsolatedAsyncioTestCase):
 
         self.assertIs(defaults["auto_stop_at_travel_end"], False)
 
+    async def test_options_form_retains_the_configured_actuator_type(self):
+        entry = SimpleNamespace(
+            data={
+                "actuator_mode": "dual_switch",
+                "actuator_type": "shade",
+                "open_travel_time": 120,
+                "close_travel_time": 120,
+                "reverse_dead_time": 0.2,
+            },
+            options={},
+        )
+        flow = RollupOptionsFlow()
+        flow.handler = "current"
+        flow.hass = SimpleNamespace(
+            config_entries=SimpleNamespace(
+                async_get_known_entry=lambda _entry_id: entry,
+            )
+        )
+
+        result = await flow.async_step_init()
+        defaults = {
+            marker.schema: marker.default()
+            for marker in result["data_schema"].schema
+        }
+
+        self.assertEqual(defaults["actuator_type"], "shade")
+
     async def test_reconfigure_updates_identity_sources_and_timings_in_one_flow(self):
         entry = SimpleNamespace(
             entry_id="current",
@@ -186,7 +256,11 @@ class ReconfigureFlowTest(IsolatedAsyncioTestCase):
         self.assertEqual(captured["unique_id"], "switch.new_close::switch.new_open")
         self.assertEqual(
             captured["data"],
-            {**user_input, "actuator_mode": "dual_switch"},
+            {
+                **user_input,
+                "actuator_mode": "dual_switch",
+                "actuator_type": "rollup",
+            },
         )
         self.assertEqual(captured["options"], {})
 

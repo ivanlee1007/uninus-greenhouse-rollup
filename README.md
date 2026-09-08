@@ -1,12 +1,12 @@
-# UNiNUS Greenhouse Rollup
+# UNiNUS Greenhouse Cover Actuator
 
-專為 Home Assistant 舊版溫室側簾智慧開關設計的 Integration。它會將兩個互斥 `switch` 安全包裝成具有位置估算、恢復與方向互鎖能力的標準 `cover`。
+專為 Home Assistant 舊版溫室雙向智慧開關設計的 Integration。它會將兩個互斥 `switch` 安全包裝成具有位置估算、恢復與方向互鎖能力的標準 `cover`，並支援捲揚、天窗與遮陽簾三種裝置語意。
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/) [![CI](https://github.com/ivanlee1007/uninus-greenhouse-rollup/actions/workflows/ci.yml/badge.svg)](https://github.com/ivanlee1007/uninus-greenhouse-rollup/actions/workflows/ci.yml)
 
 ## 適用硬體
 
-### 舊版雙 Switch Adapter
+### 舊版雙 Switch Cover Adapter
 
 底層 switch 的 `on` 代表智慧開關仍在執行計時，不保證馬達仍在轉。馬達可能已碰到硬體極限而停止，switch 稍後才更新為 `off`。因此：
 
@@ -18,7 +18,11 @@
 - 位置會由 Home Assistant `RestoreEntity` 保存；重新整理卡片或更換瀏覽器不會遺失。
 - 沒有實體位置感測器，因此 UI 一律明確標示「估算位置」與可信度。
 
-位置定義：`0%` 為全關，`100%` 為全開。
+位置定義：`0%` 為全關，`100%` 為全開。建立或調整 Config Entry 時可選擇裝置類型：
+
+- **捲揚（rollup）**：Home Assistant device class 為 `awning`。
+- **天窗（skylight）**：Home Assistant device class 為 `window`。
+- **遮陽簾（shade）**：Home Assistant device class 為 `shade`；遵循 Cover 標準語意，**開啟 = 收回**、**關閉 = 展開**。因此「開啟 Switch」必須接到收回方向，「關閉 Switch」必須接到展開方向；`100%` 是完全收回，`0%` 是完全展開。
 
 ## 特色
 
@@ -52,23 +56,24 @@ Lovelace 卡片已移至 [ivanlee1007/uninus-greenhouse-rollup-card](https://git
 
 新版 MQTT 裝置若已透過 MQTT Discovery 提供標準 `cover.*`，只需安裝獨立卡片，不需要安裝本 Integration。
 
-## 新增與管理捲揚
+## 新增與管理 Cover 致動器
 
 1. 前往「**設定 → 裝置與服務 → 整合**」。
 2. 選擇「新增整合」，搜尋 `UNiNUS Greenhouse Rollup`。
-3. 每一個舊版實體捲揚建立一個 Config Entry，設定：
+3. 每一個舊版實體致動器建立一個 Config Entry，設定：
 
-- 名稱，例如「東側捲揚」；
-- 開啟／上捲 Switch；
-- 關閉／下捲 Switch；
+- 名稱，例如「東側捲揚」、「屋頂天窗」或「南側遮陽簾」；
+- Cover 類型：捲揚、天窗或遮陽簾；
+- 開啟 Switch（遮陽簾為收回方向）；
+- 關閉 Switch（遮陽簾為展開方向）；
 - 全開行程秒數；
 - 全關行程秒數；
 - 方向切換安全間隔秒數（預設 `0.2` 秒）；
 - 行程結束後自動關閉兩個方向 Switch（既有設定預設關閉，以維持原行為）。
 
-東、南、西、北分別重複新增。從整合的 Config Entry 選擇**重新設定**，即可修改來源 Switch、名稱、行程時間與安全間隔。
+各個致動器分別重複新增。從整合的 Config Entry 選擇**重新設定**，即可修改類型、來源 Switch、名稱、行程時間與安全間隔；也可從「設定」選項調整類型、行程時間與安全設定。
 
-首次安裝時位置為未知。讓捲揚在任一方向完整執行一次設定的行程時間後，Integration 會將端點校正為 `0%` 或 `100%`。
+首次安裝時位置為未知。讓致動器在任一方向完整執行一次設定的行程時間後，Integration 會將端點校正為 `0%` 或 `100%`。
 
 ### 行程結束自動斷電
 

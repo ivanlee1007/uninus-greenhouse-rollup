@@ -10,10 +10,15 @@ class IntegrationContractTest(unittest.TestCase):
     def test_manifest_declares_config_flow_and_cover_integration(self):
         manifest = json.loads((INTEGRATION / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["domain"], "uninus_greenhouse_rollup")
+        self.assertEqual(manifest["name"], "UNiNUS Greenhouse Cover Actuator")
+        self.assertEqual(manifest["version"], "3.0.0")
         self.assertTrue(manifest["config_flow"])
         self.assertEqual(manifest["integration_type"], "service")
         self.assertEqual(manifest["iot_class"], "calculated")
         self.assertRegex(manifest["version"], r"^\d+\.\d+\.\d+$")
+
+        hacs = json.loads((ROOT / "hacs.json").read_text(encoding="utf-8"))
+        self.assertEqual(hacs["name"], manifest["name"])
 
     def test_config_flow_collects_two_switches_and_independent_travel_times(self):
         source = (INTEGRATION / "config_flow.py").read_text(encoding="utf-8")
@@ -55,12 +60,41 @@ class IntegrationContractTest(unittest.TestCase):
                 path.name,
             )
 
+    def test_actuator_type_is_translated_in_every_shipped_language(self):
+        for path in (
+            INTEGRATION / "strings.json",
+            INTEGRATION / "translations" / "en.json",
+            INTEGRATION / "translations" / "zh-Hant.json",
+        ):
+            strings = json.loads(path.read_text(encoding="utf-8"))
+            for step in ("legacy_switch_pair", "reconfigure"):
+                self.assertIn(
+                    "actuator_type",
+                    strings["config"]["step"][step]["data"],
+                    path.name,
+                )
+            self.assertIn(
+                "actuator_type",
+                strings["options"]["step"]["init"]["data"],
+                path.name,
+            )
+            self.assertEqual(
+                set(strings["selector"]["actuator_type"]["options"]),
+                {"rollup", "skylight", "shade"},
+                path.name,
+            )
+
+    def test_readme_defines_shade_open_and_close_semantics(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("開啟 = 收回", readme)
+        self.assertIn("關閉 = 展開", readme)
+
     def test_config_flow_only_offers_the_legacy_switch_adapter(self):
         source = (INTEGRATION / "config_flow.py").read_text(encoding="utf-8")
         for marker in (
             "ACTUATOR_MODE_DUAL_SWITCH",
             "async_step_legacy_switch_pair",
-            "VERSION = 2",
+            "VERSION = 3",
         ):
             self.assertIn(marker, source)
         self.assertNotIn("async_step_native_cover", source)

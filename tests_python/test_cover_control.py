@@ -4,6 +4,7 @@ from unittest import IsolatedAsyncioTestCase, skipIf
 from unittest.mock import AsyncMock, Mock, patch
 
 try:
+    from homeassistant.components.cover import CoverDeviceClass
     from custom_components.uninus_greenhouse_rollup.const import (
         CONF_CLOSE_ENTITY,
         CONF_CLOSE_TRAVEL_TIME,
@@ -44,6 +45,34 @@ class CoverControlTest(IsolatedAsyncioTestCase):
             async_create_task=asyncio.create_task,
         )
         self.cover._context = None
+
+    def test_each_actuator_type_uses_its_cover_device_class_and_generic_model(self):
+        expected = {
+            "rollup": CoverDeviceClass.AWNING,
+            "skylight": CoverDeviceClass.WINDOW,
+            "shade": CoverDeviceClass.SHADE,
+        }
+        entry = SimpleNamespace(entry_id="typed-entry", title="South actuator")
+        for actuator_type, device_class in expected.items():
+            with self.subTest(actuator_type=actuator_type):
+                cover = UninusGreenhouseRollupCover(
+                    entry,
+                    {
+                        "name": "South actuator",
+                        "actuator_type": actuator_type,
+                        CONF_OPEN_ENTITY: "switch.open",
+                        CONF_CLOSE_ENTITY: "switch.close",
+                        CONF_OPEN_TRAVEL_TIME: 100,
+                        CONF_CLOSE_TRAVEL_TIME: 100,
+                        CONF_REVERSE_DEAD_TIME: 0,
+                    },
+                )
+
+                self.assertEqual(cover.device_class, device_class)
+                self.assertEqual(
+                    cover.device_info["model"],
+                    "Timed dual-switch cover actuator",
+                )
 
     @staticmethod
     def _ids(calls):

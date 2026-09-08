@@ -1,5 +1,5 @@
 {
-  "name": "UNiNUS Greenhouse Rollup",
+  "name": "UNiNUS Greenhouse Cover Actuator",
   "render_readme": true,
   "homeassistant": "2026.7.2"
 }

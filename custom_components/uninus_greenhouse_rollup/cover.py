@@ -36,12 +36,17 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import (
+    ACTUATOR_TYPE_ROLLUP,
+    ACTUATOR_TYPE_SHADE,
+    ACTUATOR_TYPE_SKYLIGHT,
+    CONF_ACTUATOR_TYPE,
     CONF_AUTO_STOP_AT_TRAVEL_END,
     CONF_CLOSE_ENTITY,
     CONF_CLOSE_TRAVEL_TIME,
     CONF_OPEN_ENTITY,
     CONF_OPEN_TRAVEL_TIME,
     CONF_REVERSE_DEAD_TIME,
+    DEFAULT_ACTUATOR_TYPE,
     DEFAULT_AUTO_STOP_AT_TRAVEL_END,
     DEFAULT_REVERSE_DEAD_TIME,
     DOMAIN,
@@ -50,6 +55,12 @@ from .estimator import CONFIDENCE_UNKNOWN, RollupEstimator
 
 _UPDATE_INTERVAL = timedelta(seconds=1)
 _LOGGER = logging.getLogger(__name__)
+
+_DEVICE_CLASS_BY_ACTUATOR_TYPE = {
+    ACTUATOR_TYPE_ROLLUP: CoverDeviceClass.AWNING,
+    ACTUATOR_TYPE_SKYLIGHT: CoverDeviceClass.WINDOW,
+    ACTUATOR_TYPE_SHADE: CoverDeviceClass.SHADE,
+}
 
 
 async def async_setup_entry(
@@ -66,7 +77,6 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
     """Optimistic roll-up cover whose position is integrated over time."""
 
     _attr_assumed_state = True
-    _attr_device_class = CoverDeviceClass.AWNING
     _attr_has_entity_name = True
     _attr_name = None
     _attr_should_poll = False
@@ -76,6 +86,10 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
 
     def __init__(self, entry: ConfigEntry, data: dict[str, Any]) -> None:
         self._entry = entry
+        self._attr_device_class = _DEVICE_CLASS_BY_ACTUATOR_TYPE.get(
+            data.get(CONF_ACTUATOR_TYPE, DEFAULT_ACTUATOR_TYPE),
+            CoverDeviceClass.AWNING,
+        )
         self._open_entity = data[CONF_OPEN_ENTITY]
         self._close_entity = data[CONF_CLOSE_ENTITY]
         self._open_travel_time = float(data[CONF_OPEN_TRAVEL_TIME])
@@ -104,7 +118,7 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
             identifiers={(DOMAIN, entry.entry_id)},
             name=str(data.get(CONF_NAME, entry.title)),
             manufacturer="UNiNUS",
-            model="Timed dual-switch greenhouse roll-up",
+            model="Timed dual-switch cover actuator",
         )
 
     async def async_added_to_hass(self) -> None:

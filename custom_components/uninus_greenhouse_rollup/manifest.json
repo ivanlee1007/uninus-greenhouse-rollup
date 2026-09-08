@@ -1,6 +1,6 @@
 {
   "domain": "uninus_greenhouse_rollup",
-  "name": "UNiNUS Greenhouse Rollup",
+  "name": "UNiNUS Greenhouse Cover Actuator",
   "codeowners": ["@ivanlee1007"],
   "config_flow": true,
   "dependencies": [],
@@ -9,5 +9,5 @@
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/ivanlee1007/uninus-greenhouse-rollup/issues",
   "requirements": [],
-  "version": "2.4.0"
+  "version": "3.0.0"
 }

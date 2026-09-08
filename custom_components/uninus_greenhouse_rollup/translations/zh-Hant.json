@@ -1,16 +1,17 @@
 {
-  "title": "UNiNUS 溫室捲揚",
+  "title": "UNiNUS 溫室 Cover 致動器",
   "config": {
     "step": {
       "user": {
-        "title": "設定 UNiNUS 溫室捲揚",
+        "title": "設定 UNiNUS 溫室 Cover 致動器",
         "description": "將舊版裝置的互斥雙 Switch 建立為具有安全互鎖與位置估算的標準 Cover。"
       },
       "legacy_switch_pair": {
-        "title": "新增舊版雙 Switch 捲揚",
+        "title": "新增舊版雙 Switch Cover 致動器",
         "description": "將互斥的開啟與關閉 Switch 組合成可記憶估算位置的 Cover。",
         "data": {
           "name": "名稱",
+          "actuator_type": "Cover 類型",
           "open_entity": "開啟 Switch",
           "close_entity": "關閉 Switch",
           "open_travel_time": "全開行程秒數",
@@ -19,14 +20,16 @@
           "auto_stop_at_travel_end": "行程結束後自動關閉兩個方向 Switch"
         },
         "data_description": {
+          "actuator_type": "選擇裝置語意及 Home Assistant device class。遮陽簾的「開啟」代表收回，「關閉」代表展開。",
           "auto_stop_at_travel_end": "啟用後，由此 Cover 啟動全開或全關時，設定的行程秒數到達後會對開啟與關閉 Switch 都執行 turn_off。"
         }
       },
       "reconfigure": {
-        "title": "重新設定舊版雙 Switch 捲揚",
-        "description": "檢查或修改名稱、來源 Switch、行程時間與方向切換安全間隔。儲存後會重新載入此捲揚。",
+        "title": "重新設定舊版雙 Switch Cover 致動器",
+        "description": "檢查或修改 Cover 類型、名稱、來源 Switch、行程時間與方向切換安全間隔。儲存後會重新載入此致動器。",
         "data": {
           "name": "名稱",
+          "actuator_type": "Cover 類型",
           "open_entity": "開啟 Switch",
           "close_entity": "關閉 Switch",
           "open_travel_time": "全開行程秒數",
@@ -35,37 +38,49 @@
           "auto_stop_at_travel_end": "行程結束後自動關閉兩個方向 Switch"
         },
         "data_description": {
+          "actuator_type": "選擇裝置語意及 Home Assistant device class。遮陽簾的「開啟」代表收回，「關閉」代表展開。",
           "auto_stop_at_travel_end": "啟用後，由此 Cover 啟動全開或全關時，設定的行程秒數到達後會對開啟與關閉 Switch 都執行 turn_off。"
         }
       }
     },
     "error": {
       "same_switch": "開啟與關閉不可使用同一個 Switch。",
-      "switch_in_use": "其中一個 Switch 已由其他捲揚使用。"
+      "switch_in_use": "其中一個 Switch 已由其他 Cover 致動器使用。"
     },
     "abort": {
       "already_configured": "這組 Switch 已經設定。",
-      "reconfigure_successful": "捲揚設定已更新。",
+      "reconfigure_successful": "Cover 致動器設定已更新。",
       "native_cover_no_settings": "原生 MQTT Cover 由 MQTT Integration 管理，UNiNUS 不會建立代理或重複設定。"
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "調整舊版行程與安全設定",
+        "title": "調整 Cover 類型、行程與安全設定",
         "data": {
+          "actuator_type": "Cover 類型",
           "open_travel_time": "全開行程秒數",
           "close_travel_time": "全關行程秒數",
           "reverse_dead_time": "方向切換安全間隔秒數",
           "auto_stop_at_travel_end": "行程結束後自動關閉兩個方向 Switch"
         },
         "data_description": {
+          "actuator_type": "遮陽簾的「開啟」代表收回，「關閉」代表展開。",
           "auto_stop_at_travel_end": "啟用後，由此 Cover 啟動全開或全關時，設定的行程秒數到達後會對開啟與關閉 Switch 都執行 turn_off。既有設定預設關閉，以維持原行為。"
         }
       }
     },
     "abort": {
       "native_cover_no_settings": "原生 MQTT Cover 沒有需要由 UNiNUS 調整的行程或 Relay 設定。"
+    }
+  },
+  "selector": {
+    "actuator_type": {
+      "options": {
+        "rollup": "捲揚",
+        "skylight": "天窗",
+        "shade": "遮陽簾"
+      }
     }
   }
 }

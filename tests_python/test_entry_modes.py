@@ -91,9 +91,29 @@ class EntryModeLifecycleTest(unittest.IsolatedAsyncioTestCase):
 
         hass.config_entries.async_update_entry.assert_called_once()
         kwargs = hass.config_entries.async_update_entry.call_args.kwargs
-        self.assertEqual(kwargs["version"], 2)
+        self.assertEqual(kwargs["version"], 3)
         self.assertEqual(kwargs["data"][CONF_ACTUATOR_MODE], ACTUATOR_MODE_DUAL_SWITCH)
+        self.assertEqual(kwargs["data"]["actuator_type"], "rollup")
         self.assertEqual(kwargs["data"]["open_entity"], "switch.open")
+
+    async def test_version_two_entry_migrates_to_default_rollup_type(self):
+        hass = self._hass()
+        entry = SimpleNamespace(
+            version=2,
+            minor_version=1,
+            data={
+                CONF_ACTUATOR_MODE: ACTUATOR_MODE_DUAL_SWITCH,
+                "name": "Skylight before type support",
+                "open_entity": "switch.open",
+                "close_entity": "switch.close",
+            },
+        )
+
+        self.assertTrue(await async_migrate_entry(hass, entry))
+
+        kwargs = hass.config_entries.async_update_entry.call_args.kwargs
+        self.assertEqual(kwargs["version"], 3)
+        self.assertEqual(kwargs["data"]["actuator_type"], "rollup")
 
 
 if __name__ == "__main__":

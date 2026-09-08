@@ -12,8 +12,10 @@ from .const import (
     ACTUATOR_MODE_DUAL_SWITCH,
     ACTUATOR_MODE_NATIVE_COVER,
     CONF_ACTUATOR_MODE,
+    CONF_ACTUATOR_TYPE,
     CONF_CLOSE_ENTITY,
     CONF_OPEN_ENTITY,
+    DEFAULT_ACTUATOR_TYPE,
     DOMAIN,
     PLATFORMS,
 )
@@ -93,12 +95,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Add an explicit actuator mode to version-one dual-switch entries."""
-    if entry.version == 1:
+    """Add explicit mode/type defaults to older dual-switch entries."""
+    if entry.version in (1, 2):
+        data = dict(entry.data)
+        if entry.version == 1:
+            data.setdefault(CONF_ACTUATOR_MODE, ACTUATOR_MODE_DUAL_SWITCH)
+        data.setdefault(CONF_ACTUATOR_TYPE, DEFAULT_ACTUATOR_TYPE)
         hass.config_entries.async_update_entry(
             entry,
-            data={**entry.data, CONF_ACTUATOR_MODE: ACTUATOR_MODE_DUAL_SWITCH},
-            version=2,
+            data=data,
+            version=3,
         )
         return True
-    return entry.version == 2
+    return entry.version == 3
