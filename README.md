@@ -88,6 +88,28 @@ Lovelace 卡片已移至 [ivanlee1007/uninus-greenhouse-rollup-card](https://git
 
 既有 Config Entry 缺少此欄位時一律視為關閉，不會因升級而改變原本的來源 Switch 計時行為。可從 Integration 的「設定」或「重新設定」啟用，儲存後會重新載入該捲揚。
 
+### 不重新載入的即時設定服務
+
+卡片或 Automation 可呼叫 `uninus_greenhouse_rollup.set_auto_stop_at_travel_end`：
+
+```yaml
+action: uninus_greenhouse_rollup.set_auto_stop_at_travel_end
+data:
+  entity_id:
+    - cover.east_rollup
+    - cover.west_rollup
+  enabled: true
+```
+
+- `entity_id` 可為單一 `cover.*` 字串或非空清單；重複 ID 只處理一次。請明確提供目標，不支援 `all`、區域／裝置目標或原生 MQTT Cover。
+- `enabled` 只接受真正的布林值 `true`／`false`，不接受字串或 `0`／`1`。
+- 有使用者的呼叫會檢查每個目標的控制權限；無使用者 Context 的 HA 內部 Automation 可呼叫。
+- 僅允許此整合仍持有兩個來源 Switch 的已載入 Cover。Cover 必須可用、兩個 Switch 都確認為 `off`，且沒有執行中／待執行的方向、停止、衝突處理、計時或卸載命令。估算已達 `0%`／`100%` **不代表斷電**，Switch 仍為 `on` 時會拒絕。
+- 批次在任何寫入前驗證全部目標；任一目標無效即明確報錯，不修改其他目標。全部驗證後，更新期間持有所有目標的命令鎖，且驗證與取得空閒鎖之間不讓出事件迴圈，避免與新命令競爭。
+- 只合併並保存 `auto_stop_at_travel_end` 選項，同步 runtime 與 Cover attribute；**不重新載入、不呼叫繼電器服務、不建立或取消行程計時**。設定從**下一次 Cover 開啟／關閉命令**生效，重新啟動後保留。
+- 可要求服務回應：`{"updated": ["cover.east_rollup", "cover.west_rollup"], "enabled": true}`。若驗證後發生非預期保存／發布失敗，錯誤會列出失敗目標與已更新目標；跨 Config Entry 的保存不是磁碟交易，不保證回復先前成功的寫入。Config Entry 使用 HA 標準延遲保存機制，不承諾回應時已完成磁碟 fsync。
+- 停用代表不再由 HA 於下一次行程結束時主動斷電，請先確認硬體／Switch 計時保護。既有 Integration「設定」與「重新設定」流程仍維持原本的 reload 行為，可能因卸載安全清理而關閉繼電器；本服務刻意不走該流程。
+
 ## 狀態語意
 
 | `command_state` | 意義 |

@@ -2,6 +2,7 @@
 
 DOMAIN = "uninus_greenhouse_rollup"
 PLATFORMS = ["cover"]
+SERVICE_SET_AUTO_STOP_AT_TRAVEL_END = "set_auto_stop_at_travel_end"
 
 CONF_ACTUATOR_MODE = "actuator_mode"
 ACTUATOR_MODE_DUAL_SWITCH = "dual_switch"

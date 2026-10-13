@@ -40,6 +40,7 @@ class CoverControlTest(IsolatedAsyncioTestCase):
             "switch.east_close": SimpleNamespace(state="off"),
         }
         self.cover.hass = SimpleNamespace(
+            data={},
             services=self.services,
             states=self.states,
             async_create_task=asyncio.create_task,

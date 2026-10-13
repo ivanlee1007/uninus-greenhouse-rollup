@@ -74,6 +74,22 @@
       "native_cover_no_settings": "A native MQTT Cover has no travel or relay settings managed by UNiNUS."
     }
   },
+  "services": {
+    "set_auto_stop_at_travel_end": {
+      "name": "Set travel-end auto-stop",
+      "description": "Save auto-stop for loaded UNiNUS dual-switch Covers without reload or relay actuation. Both relays must be off, with no command pending. Applies to the next Cover command; all targets are validated before any write.",
+      "fields": {
+        "entity_id": {
+          "name": "Cover entities",
+          "description": "One Cover entity ID or a nonempty list of this integration's loaded Covers. Native MQTT Covers are not supported."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "True turns off both relays after the next Cover command's travel time. False relies on hardware or switch timers instead; only a boolean is accepted."
+        }
+      }
+    }
+  },
   "selector": {
     "actuator_type": {
       "options": {
