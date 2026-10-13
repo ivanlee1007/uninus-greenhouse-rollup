@@ -106,6 +106,8 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         )
         self._relays_available = False
         self._command_lock = asyncio.Lock()
+        self._pending_direction_commands = 0
+        self._pending_stop_commands = 0
         self._command_generation = 0
         self._conflict_stop_pending = False
         self._conflict_stop_task: asyncio.Task[None] | None = None
@@ -153,6 +155,9 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         )
         await self._async_stop_active_relays_on_startup()
         self._sync_from_switches()
+        self.hass.data.setdefault(DOMAIN, {}).setdefault("covers", {})[
+            self._entry.entry_id
+        ] = self
 
     @callback
     def _handle_state_event(self, event: Event) -> None:
@@ -249,6 +254,27 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
             "position_is_estimated": True,
         }
 
+    @callback
+    def validate_auto_stop_change(self) -> None:
+        """Require verified idle hardware, not an estimated endpoint."""
+        from homeassistant.exceptions import ServiceValidationError
+
+        state = self.hass.states.get(self.entity_id)
+        if self._removing or not self.available or state is None or state.state == STATE_UNAVAILABLE:
+            raise ServiceValidationError(f"Cover unavailable or removing: {self.entity_id}")
+        if (
+            self._command_lock.locked()
+            or self._pending_direction_commands
+            or self._pending_stop_commands
+            or self._conflict_stop_pending
+            or self._auto_stop_task is not None
+        ):
+            raise ServiceValidationError(f"Cover command pending: {self.entity_id}")
+        for entity_id in (self._open_entity, self._close_entity):
+            relay = self.hass.states.get(entity_id)
+            if relay is None or relay.state != "off":
+                raise ServiceValidationError(f"Relay not verified off: {entity_id}")
+
     async def async_open_cover(self, **kwargs: Any) -> None:
         """Turn both relays off, pause, then start opening."""
         await self._async_run_direction(self._open_entity)
@@ -261,18 +287,24 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         """Stop either direction and freeze the current estimate."""
         self._command_generation += 1
         self._cancel_auto_stop_task()
+        self._pending_stop_commands += 1
         try:
             async with self._command_lock:
                 await self._async_turn_both_off()
         except asyncio.CancelledError as cancellation:
             await self._async_cleanup_cancelled_command()
             raise cancellation
+        finally:
+            self._pending_stop_commands -= 1
         self._sync_from_switches()
         self.async_write_ha_state()
 
     async def async_will_remove_from_hass(self) -> None:
         """Leave both actuators in a safe state on unload or reload."""
         self._removing = True
+        covers = self.hass.data.get(DOMAIN, {}).get("covers", {})
+        if covers.get(self._entry.entry_id) is self:
+            covers.pop(self._entry.entry_id)
         self._command_generation += 1
         auto_stop_task = self._auto_stop_task
         self._cancel_auto_stop_task()
@@ -307,12 +339,15 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         self._command_generation += 1
         self._cancel_auto_stop_task()
         generation = self._command_generation
+        self._pending_direction_commands += 1
         try:
             async with self._command_lock:
                 await self._async_run_direction_locked(target_entity, generation)
         except asyncio.CancelledError as cancellation:
             await self._async_cleanup_cancelled_command()
             raise cancellation
+        finally:
+            self._pending_direction_commands -= 1
 
     async def _async_run_direction_locked(
         self, target_entity: str, generation: int

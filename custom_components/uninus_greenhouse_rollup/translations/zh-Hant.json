@@ -74,6 +74,22 @@
       "native_cover_no_settings": "原生 MQTT Cover 沒有需要由 UNiNUS 調整的行程或 Relay 設定。"
     }
   },
+  "services": {
+    "set_auto_stop_at_travel_end": {
+      "name": "設定行程結束自動斷電",
+      "description": "保存已載入 UNiNUS 雙 Switch Cover 的自動斷電設定，不重新載入或操作繼電器。兩個 Switch 必須皆為 off，且沒有待執行命令。從下一次 Cover 命令生效，所有目標均先驗證才寫入。",
+      "fields": {
+        "entity_id": {
+          "name": "Cover 實體",
+          "description": "一個 Cover entity ID 或非空清單，僅限此整合已載入的 Cover，不支援原生 MQTT Cover。"
+        },
+        "enabled": {
+          "name": "啟用",
+          "description": "true 會在下一次 Cover 命令的行程時間結束後關閉兩個 Switch；false 改依賴硬體或 Switch 計時。僅接受布林值。"
+        }
+      }
+    }
+  },
   "selector": {
     "actuator_type": {
       "options": {

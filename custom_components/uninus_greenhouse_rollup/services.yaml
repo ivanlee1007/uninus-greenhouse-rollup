@@ -1,0 +1,13 @@
+set_auto_stop_at_travel_end:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: uninus_greenhouse_rollup
+          domain: cover
+          multiple: true
+    enabled:
+      required: true
+      selector:
+        boolean:

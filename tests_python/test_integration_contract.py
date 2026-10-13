@@ -60,6 +60,32 @@ class IntegrationContractTest(unittest.TestCase):
                 path.name,
             )
 
+    def test_auto_stop_service_metadata_and_translations_match_runtime_contract(self):
+        import yaml
+        service = "set_auto_stop_at_travel_end"
+        definitions = yaml.safe_load((INTEGRATION / "services.yaml").read_text(encoding="utf-8"))
+        self.assertEqual(set(definitions), {service})
+        fields = definitions[service]["fields"]
+        self.assertEqual(set(fields), {"entity_id", "enabled"})
+        self.assertNotIn("target", definitions[service])
+        self.assertTrue(fields["entity_id"]["required"])
+        self.assertEqual(fields["entity_id"]["selector"]["entity"],
+                         {"integration": "uninus_greenhouse_rollup", "domain": "cover", "multiple": True})
+        self.assertTrue(fields["enabled"]["required"])
+        self.assertIn("boolean", fields["enabled"]["selector"])
+        for path in (INTEGRATION / "strings.json", *sorted((INTEGRATION / "translations").glob("*.json"))):
+            strings = json.loads(path.read_text(encoding="utf-8"))
+            translated = strings["services"][service]
+            self.assertTrue(translated["name"])
+            self.assertTrue(translated["description"])
+            self.assertEqual(set(translated["fields"]), set(fields))
+            for field in translated["fields"].values():
+                self.assertTrue(field["name"])
+                self.assertTrue(field["description"])
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("uninus_greenhouse_rollup.set_auto_stop_at_travel_end", readme)
+        self.assertIn("OptionsFlowWithReload", (INTEGRATION / "config_flow.py").read_text(encoding="utf-8"))
+
     def test_actuator_type_is_translated_in_every_shipped_language(self):
         for path in (
             INTEGRATION / "strings.json",
