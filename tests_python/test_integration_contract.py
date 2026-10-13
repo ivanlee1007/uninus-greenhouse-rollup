@@ -11,7 +11,7 @@ class IntegrationContractTest(unittest.TestCase):
         manifest = json.loads((INTEGRATION / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["domain"], "uninus_greenhouse_rollup")
         self.assertEqual(manifest["name"], "UNiNUS Greenhouse Cover Actuator")
-        self.assertEqual(manifest["version"], "3.0.0")
+        self.assertEqual(manifest["version"], "3.1.0")
         self.assertTrue(manifest["config_flow"])
         self.assertEqual(manifest["integration_type"], "service")
         self.assertEqual(manifest["iot_class"], "calculated")
