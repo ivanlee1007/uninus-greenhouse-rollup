@@ -75,6 +75,99 @@ class CoverControlTest(IsolatedAsyncioTestCase):
                     "Timed dual-switch cover actuator",
                 )
 
+    def test_coverage_complements_the_public_integer_opening_position(self):
+        self.cover._sync_from_switches()
+        for position, opening, coverage in (
+            (0, 0, 100),
+            (100, 100, 0),
+            (37, 37, 63),
+            (37.4, 37, 63),
+            (37.5, 38, 62),
+            (38.5, 38, 62),
+            (None, None, None),
+        ):
+            with self.subTest(position=position):
+                self.cover._estimator.position = position
+                self.assertEqual(self.cover.current_cover_position, opening)
+                self.assertIn("coverage_position", self.cover.extra_state_attributes)
+                self.assertEqual(
+                    self.cover.extra_state_attributes["coverage_position"], coverage
+                )
+                self.assertEqual(
+                    self.cover.is_closed,
+                    None if position is None else position <= 0,
+                )
+        self.services.async_call.assert_not_awaited()
+
+    def test_coverage_is_unknown_while_sources_are_unavailable_then_recovers(self):
+        for entity_id in ("switch.east_open", "switch.east_close"):
+            for source_state in ("unavailable", "unknown", None):
+                for position in (0, 37.5, 100, None):
+                    with self.subTest(
+                        entity_id=entity_id, source_state=source_state, position=position
+                    ):
+                        self.states[entity_id] = SimpleNamespace(state=source_state)
+                        if source_state is None:
+                            self.states.pop(entity_id)
+                        self.cover._estimator.position = position
+                        self.cover._sync_from_switches()
+                        opening = self.cover.current_cover_position
+                        self.assertFalse(self.cover.available)
+                        self.assertIsNone(
+                            self.cover.extra_state_attributes["coverage_position"]
+                        )
+                        self.assertEqual(self.cover.current_cover_position, opening)
+                        self.states[entity_id] = SimpleNamespace(state="off")
+                        self.cover._sync_from_switches()
+                        self.assertTrue(self.cover.available)
+                        self.assertEqual(
+                            self.cover.extra_state_attributes["coverage_position"],
+                            None if opening is None else 100 - opening,
+                        )
+        self.services.async_call.assert_not_awaited()
+
+    async def test_restore_recomputes_coverage_from_opening_not_stale_custom_attribute(self):
+        for position, opening, coverage in (
+            (0, 0, 100),
+            (37.5, 38, 62),
+            (100, 100, 0),
+            (None, None, None),
+        ):
+            with self.subTest(position=position):
+                self.setUp()
+                self.cover.async_get_last_state = AsyncMock(
+                    return_value=SimpleNamespace(
+                        attributes={
+                            "current_position": position,
+                            "coverage_position": 91,
+                            "position_confidence": "estimated",
+                        }
+                    )
+                )
+                self.cover.async_on_remove = Mock()
+                with patch(
+                    "homeassistant.components.cover.CoverEntity.async_added_to_hass",
+                    new=AsyncMock(),
+                ), patch.object(
+                    cover_module, "async_track_state_change_event"
+                ), patch.object(cover_module, "async_track_time_interval"):
+                    await self.cover.async_added_to_hass()
+
+                self.assertTrue(self.cover.available)
+                self.assertEqual(self.cover.current_cover_position, opening)
+                self.assertEqual(
+                    self.cover.extra_state_attributes["coverage_position"], coverage
+                )
+                self.assertEqual(
+                    self.cover.state_attributes.get("current_position"), opening
+                )
+                self.assertFalse(self.cover.is_opening)
+                self.assertFalse(self.cover.is_closing)
+                self.assertEqual(
+                    [call.args[1] for call in self.services.async_call.await_args_list],
+                    ["turn_off", "turn_off"],
+                )
+
     @staticmethod
     def _ids(calls):
         return [item.args[2]["entity_id"] for item in calls]

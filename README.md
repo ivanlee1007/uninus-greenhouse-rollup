@@ -112,6 +112,17 @@ data:
 
 ## 狀態語意
 
+### 同一個 Cover 的開啟與覆蓋百分比
+
+Integration 不會另外建立 Sensor；開啟與覆蓋百分比都在原本同一個 `cover.*` 的 attributes：
+
+- `current_position`：Home Assistant 標準開啟百分比，`0` 為全關、`100` 為全開；既有語意與四捨五入規則不變。
+- `coverage_position`：本 Integration 的自訂覆蓋百分比，直接以已對外公開的整數 `current_position` 計算 `100 - current_position`。例如開啟 `25` 時覆蓋 `75`，全關覆蓋 `100`，全開覆蓋 `0`；遮陽簾的覆蓋即展開比例。
+- 尚未校正／恢復位置時，`coverage_position` 為 `null`；任一來源 Switch 遺失、`unknown` 或 `unavailable` 而使 Cover 不可用時，也為 `null`，不會把未知位置當成 `0` 再換算成 `100`。
+- 不可用時原有 `current_position` 仍可能保留上次估算值，這不代表目前可控制。來源恢復可用後，覆蓋百分比會重新由同一位置推導。
+- 覆蓋百分比沒有獨立計時、校正或保存；重新啟動後只由既有恢復的開啟位置重新計算，不讀取舊的 `coverage_position`。位置可信度與估算限制同樣適用。
+- 本屬性不改變 Cover 狀態、`is_closed`、開啟／停止／關閉服務、方向 Switch 或行程設定；原生 MQTT Cover 不會由本 Integration 加上此自訂屬性。
+
 | `command_state` | 意義 |
 |---|---|
 | `idle` | 兩個底層 switch 都是 `off` |

@@ -236,7 +236,11 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         """Expose command-vs-motion semantics to the bundled card."""
         open_state = self.hass.states.get(self._open_entity)
         close_state = self.hass.states.get(self._close_entity)
+        position = self.current_cover_position
         return {
+            "coverage_position": (
+                100 - position if self.available and position is not None else None
+            ),
             "position_confidence": self._estimator.confidence,
             "command_state": (
                 self._estimator.command_state
