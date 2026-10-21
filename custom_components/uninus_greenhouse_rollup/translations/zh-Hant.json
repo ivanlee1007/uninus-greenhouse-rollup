@@ -16,6 +16,7 @@
           "close_entity": "關閉 Switch",
           "open_travel_time": "全開行程秒數",
           "close_travel_time": "全關行程秒數",
+          "off_confirmation_timeout": "雙繼電器關閉確認逾時秒數（0.1–30）",
           "reverse_dead_time": "方向切換安全間隔秒數",
           "auto_stop_at_travel_end": "行程結束後自動關閉兩個方向 Switch"
         },
@@ -34,6 +35,7 @@
           "close_entity": "關閉 Switch",
           "open_travel_time": "全開行程秒數",
           "close_travel_time": "全關行程秒數",
+          "off_confirmation_timeout": "雙繼電器關閉確認逾時秒數（0.1–30）",
           "reverse_dead_time": "方向切換安全間隔秒數",
           "auto_stop_at_travel_end": "行程結束後自動關閉兩個方向 Switch"
         },
@@ -61,6 +63,7 @@
           "actuator_type": "Cover 類型",
           "open_travel_time": "全開行程秒數",
           "close_travel_time": "全關行程秒數",
+          "off_confirmation_timeout": "雙繼電器關閉確認逾時秒數（0.1–30）",
           "reverse_dead_time": "方向切換安全間隔秒數",
           "auto_stop_at_travel_end": "行程結束後自動關閉兩個方向 Switch"
         },

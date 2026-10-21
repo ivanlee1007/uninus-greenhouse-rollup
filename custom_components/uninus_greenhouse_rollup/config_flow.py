@@ -23,6 +23,8 @@ from .const import (
     CONF_OPEN_ENTITY,
     CONF_OPEN_TRAVEL_TIME,
     CONF_REVERSE_DEAD_TIME,
+    CONF_OFF_CONFIRMATION_TIMEOUT,
+    DEFAULT_OFF_CONFIRMATION_TIMEOUT,
     DEFAULT_ACTUATOR_TYPE,
     DEFAULT_AUTO_STOP_AT_TRAVEL_END,
     DEFAULT_CLOSE_TRAVEL_TIME,
@@ -75,6 +77,13 @@ def _pair_unique_id(open_entity: str, close_entity: str) -> str:
     return "::".join(sorted((open_entity, close_entity)))
 
 
+def _off_timeout_selector() -> selector.NumberSelector:
+    return selector.NumberSelector(selector.NumberSelectorConfig(
+        min=0.1, max=30, step=0.1,
+        mode=selector.NumberSelectorMode.BOX, unit_of_measurement="s",
+    ))
+
+
 def _switches_in_use(
     entries: list[config_entries.ConfigEntry],
     open_entity: str,
@@ -104,6 +113,10 @@ def _schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
             ): _actuator_type_selector(),
             vol.Required(CONF_OPEN_ENTITY, default=values.get(CONF_OPEN_ENTITY)): _entity_selector(),
             vol.Required(CONF_CLOSE_ENTITY, default=values.get(CONF_CLOSE_ENTITY)): _entity_selector(),
+            vol.Required(
+                CONF_OFF_CONFIRMATION_TIMEOUT,
+                default=values.get(CONF_OFF_CONFIRMATION_TIMEOUT, DEFAULT_OFF_CONFIRMATION_TIMEOUT),
+            ): _off_timeout_selector(),
             vol.Required(
                 CONF_OPEN_TRAVEL_TIME,
                 default=values.get(CONF_OPEN_TRAVEL_TIME, DEFAULT_OPEN_TRAVEL_TIME),
@@ -231,6 +244,10 @@ class RollupOptionsFlow(config_entries.OptionsFlowWithReload):
             return self.async_create_entry(title="", data=user_input)
         schema = vol.Schema(
             {
+                vol.Required(
+                    CONF_OFF_CONFIRMATION_TIMEOUT,
+                    default=current.get(CONF_OFF_CONFIRMATION_TIMEOUT, DEFAULT_OFF_CONFIRMATION_TIMEOUT),
+                ): _off_timeout_selector(),
                 vol.Required(
                     CONF_ACTUATOR_TYPE,
                     default=current.get(CONF_ACTUATOR_TYPE, DEFAULT_ACTUATOR_TYPE),

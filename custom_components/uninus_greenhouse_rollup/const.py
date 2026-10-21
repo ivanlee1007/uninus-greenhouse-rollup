@@ -24,6 +24,8 @@ CONF_CLOSE_ENTITY = "close_entity"
 CONF_OPEN_TRAVEL_TIME = "open_travel_time"
 CONF_CLOSE_TRAVEL_TIME = "close_travel_time"
 CONF_REVERSE_DEAD_TIME = "reverse_dead_time"
+CONF_OFF_CONFIRMATION_TIMEOUT = "off_confirmation_timeout"
+DEFAULT_OFF_CONFIRMATION_TIMEOUT = 5.0
 CONF_AUTO_STOP_AT_TRAVEL_END = "auto_stop_at_travel_end"
 
 DEFAULT_OPEN_TRAVEL_TIME = 120

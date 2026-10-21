@@ -28,7 +28,7 @@
 
 - 將一組開啟 switch 與關閉 switch 包裝成標準 Home Assistant `cover` entity。
 - 開啟／關閉前先關閉兩個方向、等待可調整的安全間隔、再次確認兩方向關閉，再啟動單一方向；安全間隔期間的停止命令會取消延遲啟動。
-- 支援 `cover.open_cover`、`cover.stop_cover`、`cover.close_cover`。
+- 支援 `cover.open_cover`、`cover.stop_cover`、`cover.close_cover`、`cover.set_cover_position`（時間估算目標）。
 - 監聽卡片以外的手動操作、automation 與原始 switch 狀態變更。
 - 顯示 `calibrated`、`estimated`、`unknown` 位置可信度。
 - 兩個 switch 同時為 `on` 時顯示控制衝突且停止位置積分。
@@ -69,11 +69,39 @@ Lovelace 卡片已移至 [ivanlee1007/uninus-greenhouse-rollup-card](https://git
 - 全開行程秒數；
 - 全關行程秒數；
 - 方向切換安全間隔秒數（預設 `0.2` 秒）；
+- 雙繼電器關閉確認逾時秒數（`off_confirmation_timeout`，預設 `5` 秒，範圍 `0.1–30` 秒）；
 - 行程結束後自動關閉兩個方向 Switch（既有設定預設關閉，以維持原行為）。
 
 各個致動器分別重複新增。從整合的 Config Entry 選擇**重新設定**，即可修改類型、來源 Switch、名稱、行程時間與安全間隔；也可從「設定」選項調整類型、行程時間與安全設定。
 
 首次安裝時位置為未知。讓致動器在任一方向完整執行一次設定的行程時間後，Integration 會將端點校正為 `0%` 或 `100%`。
+
+### 時間估算目標位置
+
+```yaml
+action: cover.set_cover_position
+target:
+  entity_id: cover.east_rollup
+data:
+  position: 35
+```
+
+- 目標使用標準**開啟百分比**：整數 `0–100`，`0` 全關、`100` 全開。不是覆蓋百分比；既有 Entity ID、Unique ID、`coverage_position = 100 - current_position` 均不變。
+- 起始位置已知時，先停止原方向，再根據當下估算位置計算 `abs(目標 - 起點) / 100 × 該方向完整行程時間`。開啟、關閉分別使用各自的完整行程秒數；安全間隔與關閉確認等待不算入新行程。
+- 與目前公開整數位置相同時不重新通電；若正在運動，仍會停止兩方向。
+- 起點未知時，要求 `1–99` 會明確拒絕，**不對任何輸出寫入，也不解除既有端點安全計時**。明確要求 `0` 或 `100` 才會執行該方向完整校正時間。校正仍只是時間推估，不是限位回授。
+- 每次目標行程都會自動對兩方向執行 `turn_off`，**不受**既有 `auto_stop_at_travel_end` 開關影響；該選項仍只控制原本全開／全關服務。直接操作原始 Switch 不會建立目標計時。
+- 停止、反轉、新命令、來源改變與卸載會取消舊目標計時；重新載入或啟動只先關閉兩方向，不恢復未完成目標。來源在目標行程中遺失時會嘗試安全停止，但斷線時不能保證實際斷電。
+- `target_position` 是此行程要求的目標，不代表實際位置。`target_operation` 為 `idle`、`running`、`timer_elapsed` 或 `error`（定時停止服務失敗）；`timer_elapsed` 只表示時間預算已到且已送出關閉服務，不表示馬達抵達目標或已讀回斷電。停止或被新命令取代後目標清除；不從 RestoreEntity 恢復目標。
+- `position_is_estimated` 永遠為 `true`，`physical_arrival_confirmed` 永遠為 `false`；`current_position` 仍由原本無限位時間估算器產生，不會直接把要求值當成已抵達位置。
+
+### 確認雙繼電器關閉後才啟動
+
+每次 Cover 啟動方向前，都先發送兩個 `turn_off`、等待方向切換安全間隔，再檢查**兩個來源狀態都為 `off`**；服務成功回覆不等於關閉確認。支援延遲更新的非同步狀態讀回，最長等待 `off_confirmation_timeout`，逾時明確報錯且不發送任何 `turn_on`。缺少狀態、`unknown`、`unavailable` 或其他非 `off` 狀態均不能放行。等待中的停止／反向新命令會阻止舊命令稍後重新啟動。
+
+舊設定採向後相容的新增欄位預設：缺少逾時欄位即使用 `5` 秒，不重建 Entry、不改 ID、不改原本 auto-stop 開關；舊版 Entry 的既有版本遷移保留，設定／重新設定表單可另行儲存逾時值。此變更刻意讓未確認關閉的舊設備拒絕啟動，不能關閉此安全檢查。
+
+EMOS 裝置請使用 `relay0` 對應的**實際輸出**；`auto0`／`auto1` 是虛擬定時序列 Switch，不應把序列的計時狀態當成實際輸出回授。本 Integration 不改韌體、不自動移除這些虛擬 Switch；遷移前需自行停用會與 Cover 競爭實際輸出的舊 Automation。
 
 ### 行程結束自動斷電
 
@@ -135,7 +163,7 @@ Integration 不會另外建立 Sensor；開啟與覆蓋百分比都在原本同�
 
 `position_confidence`：
 
-- `calibrated`：已完整抵達估算端點；
+- `calibrated`：時間模型已建立估算端點，**不是已讀到實體限位**；
 - `estimated`：從已知位置依時間積分；
 - `unknown`：尚無可靠起始位置，完整運轉一次即可校正。
 
@@ -144,6 +172,7 @@ Integration 不會另外建立 Sensor；開啟與覆蓋百分比都在原本同�
 - Integration 是無位置回授的樂觀估算器，不可取代硬體限位、馬達保護或緊急停止裝置。
 - 若簾布遭卡住、馬達斷電或機構被人工移動，估算位置可能與實際位置不同；請完整開啟或關閉一次重新校正。
 - 兩個方向的底層硬體仍應具有電氣互鎖；軟體互鎖不能取代硬體安全設計。
+- HA 停機、網路中斷或未觀察到的外部移動會使估算產生不確定性；恢復的數值不是新的實測值。請保留裝置端獨立最大通電時間及硬體限位，HA 計時不能提供硬即時停止或斷線斷電保證。
 
 ## 開發
 

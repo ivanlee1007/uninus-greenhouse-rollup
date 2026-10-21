@@ -16,6 +16,7 @@
           "close_entity": "Close switch",
           "open_travel_time": "Full opening travel time (seconds)",
           "close_travel_time": "Full closing travel time (seconds)",
+          "off_confirmation_timeout": "Both-relays-off confirmation timeout (seconds, 0.1–30)",
           "reverse_dead_time": "Direction-change safety delay (seconds)",
           "auto_stop_at_travel_end": "Turn off both direction switches when travel ends"
         },
@@ -34,6 +35,7 @@
           "close_entity": "Close switch",
           "open_travel_time": "Full opening travel time (seconds)",
           "close_travel_time": "Full closing travel time (seconds)",
+          "off_confirmation_timeout": "Both-relays-off confirmation timeout (seconds, 0.1–30)",
           "reverse_dead_time": "Direction-change safety delay (seconds)",
           "auto_stop_at_travel_end": "Turn off both direction switches when travel ends"
         },
@@ -61,6 +63,7 @@
           "actuator_type": "Cover type",
           "open_travel_time": "Full opening travel time (seconds)",
           "close_travel_time": "Full closing travel time (seconds)",
+          "off_confirmation_timeout": "Both-relays-off confirmation timeout (seconds, 0.1–30)",
           "reverse_dead_time": "Direction-change safety delay (seconds)",
           "auto_stop_at_travel_end": "Turn off both direction switches when travel ends"
         },
