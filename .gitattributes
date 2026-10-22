@@ -5,6 +5,7 @@ custom_components/uninus_greenhouse_rollup/__init__.py -text whitespace=cr-at-eo
 custom_components/uninus_greenhouse_rollup/config_flow.py -text whitespace=cr-at-eol
 custom_components/uninus_greenhouse_rollup/const.py -text whitespace=cr-at-eol
 custom_components/uninus_greenhouse_rollup/cover.py -text whitespace=cr-at-eol
+custom_components/uninus_greenhouse_rollup/manifest.json -text whitespace=cr-at-eol
 custom_components/uninus_greenhouse_rollup/services.yaml -text whitespace=cr-at-eol
 custom_components/uninus_greenhouse_rollup/strings.json -text whitespace=cr-at-eol
 custom_components/uninus_greenhouse_rollup/translations/en.json -text whitespace=cr-at-eol
