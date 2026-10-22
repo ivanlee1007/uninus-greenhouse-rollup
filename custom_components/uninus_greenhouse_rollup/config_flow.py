@@ -23,6 +23,8 @@ from .const import (
     CONF_OPEN_ENTITY,
     CONF_OPEN_TRAVEL_TIME,
     CONF_REVERSE_DEAD_TIME,
+    CONF_OFF_CONFIRMATION_TIMEOUT,
+    DEFAULT_OFF_CONFIRMATION_TIMEOUT,
     DEFAULT_ACTUATOR_TYPE,
     DEFAULT_AUTO_STOP_AT_TRAVEL_END,
     DEFAULT_CLOSE_TRAVEL_TIME,
@@ -30,6 +32,21 @@ from .const import (
     DEFAULT_REVERSE_DEAD_TIME,
     DOMAIN,
 )
+
+
+def _mutation_context(flow):
+    """Core's native HTTP flow manager does not populate user_id in flow context."""
+    from homeassistant.components.http import current_request, KEY_HASS_USER
+    from homeassistant.core import Context
+    from homeassistant.exceptions import Unauthorized
+
+    request = current_request.get()
+    if request is not None:
+        user = request.get(KEY_HASS_USER)
+        if user is None:
+            raise Unauthorized()
+        return Context(user_id=user.id)
+    return Context(user_id=flow.context.get("user_id"))
 
 
 def _entity_selector() -> selector.EntitySelector:
@@ -75,6 +92,13 @@ def _pair_unique_id(open_entity: str, close_entity: str) -> str:
     return "::".join(sorted((open_entity, close_entity)))
 
 
+def _off_timeout_selector() -> selector.NumberSelector:
+    return selector.NumberSelector(selector.NumberSelectorConfig(
+        min=0.1, max=30, step=0.1,
+        mode=selector.NumberSelectorMode.BOX, unit_of_measurement="s",
+    ))
+
+
 def _switches_in_use(
     entries: list[config_entries.ConfigEntry],
     open_entity: str,
@@ -104,6 +128,10 @@ def _schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
             ): _actuator_type_selector(),
             vol.Required(CONF_OPEN_ENTITY, default=values.get(CONF_OPEN_ENTITY)): _entity_selector(),
             vol.Required(CONF_CLOSE_ENTITY, default=values.get(CONF_CLOSE_ENTITY)): _entity_selector(),
+            vol.Required(
+                CONF_OFF_CONFIRMATION_TIMEOUT,
+                default=values.get(CONF_OFF_CONFIRMATION_TIMEOUT, DEFAULT_OFF_CONFIRMATION_TIMEOUT),
+            ): _off_timeout_selector(),
             vol.Required(
                 CONF_OPEN_TRAVEL_TIME,
                 default=values.get(CONF_OPEN_TRAVEL_TIME, DEFAULT_OPEN_TRAVEL_TIME),
@@ -179,6 +207,16 @@ class UninusGreenhouseRollupConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
         current = {**entry.data, **entry.options}
         if current.get(CONF_ACTUATOR_MODE) == ACTUATOR_MODE_NATIVE_COVER:
             return self.async_abort(reason="native_cover_no_settings")
+        from homeassistant.core import Context
+        from homeassistant.exceptions import ServiceValidationError
+        from .parameters import RANGES
+
+        manager = self.hass.data.get(DOMAIN, {}).get("parameters", {}).get(entry.entry_id)
+        if manager is None:
+            return self.async_abort(reason="hardware_policy_unavailable")
+        current.update(manager.parameters)
+        current.setdefault(CONF_NAME, entry.title)
+        current.setdefault(CONF_AUTO_STOP_AT_TRAVEL_END, DEFAULT_AUTO_STOP_AT_TRAVEL_END)
         errors: dict[str, str] = {}
         if user_input is not None:
             if user_input[CONF_OPEN_ENTITY] == user_input[CONF_CLOSE_ENTITY]:
@@ -191,6 +229,20 @@ class UninusGreenhouseRollupConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
             ):
                 errors["base"] = "switch_in_use"
             else:
+                try:
+                    await manager.async_update(
+                        {key: user_input[key] for key in RANGES if key in user_input},
+                        _mutation_context(self),
+                    )
+                except ServiceValidationError:
+                    return self.async_show_form(step_id="reconfigure", data_schema=_schema(current),
+                                                errors={"base": "hardware_policy_unavailable"})
+                nonnumeric_changed = any(
+                    current.get(k, DEFAULT_ACTUATOR_TYPE if k == CONF_ACTUATOR_TYPE else None) != v
+                    for k, v in user_input.items() if k not in RANGES
+                )
+                if not nonnumeric_changed:
+                    return self.async_abort(reason="reconfigure_successful")
                 data = {
                     **user_input,
                     CONF_ACTUATOR_MODE: ACTUATOR_MODE_DUAL_SWITCH,
@@ -221,16 +273,46 @@ class UninusGreenhouseRollupConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
 
 
 class RollupOptionsFlow(config_entries.OptionsFlowWithReload):
-    """Edit timing options and reload the entry exactly once."""
+    """Use the hardware authority; reload only nonnumeric configuration changes."""
+
+    automatic_reload = False
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         current = {**self.config_entry.data, **self.config_entry.options}
         if current.get(CONF_ACTUATOR_MODE) == ACTUATOR_MODE_NATIVE_COVER:
             return self.async_abort(reason="native_cover_no_settings")
+        from homeassistant.core import Context
+        from homeassistant.exceptions import ServiceValidationError
+        from .parameters import RANGES
+
+        manager = self.hass.data.get(DOMAIN, {}).get("parameters", {}).get(self.config_entry.entry_id)
+        if manager is None:
+            return self.async_abort(reason="hardware_policy_unavailable")
+        current.update(manager.parameters)
+        current.setdefault(CONF_ACTUATOR_TYPE, DEFAULT_ACTUATOR_TYPE)
+        current.setdefault(CONF_AUTO_STOP_AT_TRAVEL_END, DEFAULT_AUTO_STOP_AT_TRAVEL_END)
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            try:
+                await manager.async_update(
+                    {key: user_input[key] for key in RANGES if key in user_input},
+                    _mutation_context(self),
+                )
+            except ServiceValidationError:
+                return self.async_show_form(step_id="init", data_schema=_schema(current),
+                                            errors={"base": "hardware_policy_unavailable"})
+            options = {**self.config_entry.options,
+                       **{k: v for k, v in user_input.items() if k not in RANGES}}
+            changed = any(current.get(k) != v for k, v in user_input.items() if k not in RANGES)
+            if changed:
+                self.hass.config_entries.async_update_entry(self.config_entry, options=options)
+                await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+            return self.async_create_entry(title="", data=options)
         schema = vol.Schema(
             {
+                vol.Required(
+                    CONF_OFF_CONFIRMATION_TIMEOUT,
+                    default=current.get(CONF_OFF_CONFIRMATION_TIMEOUT, DEFAULT_OFF_CONFIRMATION_TIMEOUT),
+                ): _off_timeout_selector(),
                 vol.Required(
                     CONF_ACTUATOR_TYPE,
                     default=current.get(CONF_ACTUATOR_TYPE, DEFAULT_ACTUATOR_TYPE),

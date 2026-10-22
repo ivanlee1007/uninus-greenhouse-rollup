@@ -6,6 +6,7 @@ import asyncio
 from contextlib import suppress
 from datetime import timedelta
 import logging
+import math
 import time
 from typing import Any
 
@@ -43,11 +44,13 @@ from .const import (
     CONF_AUTO_STOP_AT_TRAVEL_END,
     CONF_CLOSE_ENTITY,
     CONF_CLOSE_TRAVEL_TIME,
+    CONF_OFF_CONFIRMATION_TIMEOUT,
     CONF_OPEN_ENTITY,
     CONF_OPEN_TRAVEL_TIME,
     CONF_REVERSE_DEAD_TIME,
     DEFAULT_ACTUATOR_TYPE,
     DEFAULT_AUTO_STOP_AT_TRAVEL_END,
+    DEFAULT_OFF_CONFIRMATION_TIMEOUT,
     DEFAULT_REVERSE_DEAD_TIME,
     DOMAIN,
 )
@@ -70,7 +73,8 @@ async def async_setup_entry(
 ) -> None:
     """Set up the remembered cover for one switch pair."""
     data = {**entry.data, **entry.options}
-    async_add_entities([UninusGreenhouseRollupCover(entry, data)])
+    manager = hass.data.get(DOMAIN, {}).get("parameters", {}).get(entry.entry_id)
+    async_add_entities([manager.cover if manager else UninusGreenhouseRollupCover(entry, data)])
 
 
 class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
@@ -82,6 +86,7 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
     _attr_should_poll = False
     _attr_supported_features = (
         CoverEntityFeature.OPEN | CoverEntityFeature.CLOSE | CoverEntityFeature.STOP
+        | CoverEntityFeature.SET_POSITION
     )
 
     def __init__(self, entry: ConfigEntry, data: dict[str, Any]) -> None:
@@ -105,6 +110,14 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
             self._close_travel_time,
         )
         self._relays_available = False
+        timeout = data.get(CONF_OFF_CONFIRMATION_TIMEOUT, DEFAULT_OFF_CONFIRMATION_TIMEOUT)
+        self._off_confirmation_timeout = float(timeout)
+        if (
+            isinstance(timeout, bool)
+            or not math.isfinite(self._off_confirmation_timeout)
+            or not 0.1 <= self._off_confirmation_timeout <= 30
+        ):
+            raise ValueError("off_confirmation_timeout must be between 0.1 and 30 seconds")
         self._command_lock = asyncio.Lock()
         self._pending_direction_commands = 0
         self._pending_stop_commands = 0
@@ -115,6 +128,9 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         self._auto_stop_target_entity: str | None = None
         self._auto_stop_target_confirmed = False
         self._removing = False
+        self._parameter_epoch = 0
+        self._target_position: int | None = None
+        self._target_operation = "idle"
         self._attr_unique_id = entry.entry_id
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
@@ -125,9 +141,13 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
 
     async def async_added_to_hass(self) -> None:
         """Restore position, then observe both underlying switches."""
+        self._removing = False
         await super().async_added_to_hass()
         last_state = await self.async_get_last_state()
-        if last_state is not None:
+        if last_state is not None and all(
+            last_state.attributes.get(key, getattr(self, "_" + key)) == getattr(self, "_" + key)
+            for key in (CONF_OPEN_TRAVEL_TIME, CONF_CLOSE_TRAVEL_TIME)
+        ):
             self._estimator = RollupEstimator.from_snapshot(
                 self._open_travel_time,
                 self._close_travel_time,
@@ -160,15 +180,21 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         ] = self
 
     @callback
-    def _handle_state_event(self, event: Event) -> None:
+    def _handle_state_event(self, event: Event | None) -> None:
         """Synchronize after direct, automation, or card switch changes."""
         if self._removing:
             return
+        target_was_running = (
+            self._target_position is not None and self._auto_stop_task is not None
+        )
         self._cancel_auto_stop_if_source_changed(event)
         self._sync_from_switches()
         self.async_write_ha_state()
         if (
-            self._estimator.command_state == "conflict"
+            (
+                self._estimator.command_state == "conflict"
+                or (target_was_running and not self._relays_available)
+            )
             and not self._conflict_stop_pending
         ):
             self._conflict_stop_pending = True
@@ -179,8 +205,7 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
     @callback
     def _handle_tick(self, _now: Any) -> None:
         """Resync source states and update the estimate every interval."""
-        self._sync_from_switches()
-        self.async_write_ha_state()
+        self._handle_state_event(None)
 
     @callback
     def _sync_from_switches(self) -> None:
@@ -254,8 +279,12 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
             "open_travel_time": self._open_travel_time,
             "close_travel_time": self._close_travel_time,
             "reverse_dead_time": self._reverse_dead_time,
+            "off_confirmation_timeout": self._off_confirmation_timeout,
             "auto_stop_at_travel_end": self._auto_stop_at_travel_end,
             "position_is_estimated": True,
+            "target_position": self._target_position,
+            "target_operation": self._target_operation,
+            "physical_arrival_confirmed": False,
         }
 
     @callback
@@ -287,6 +316,59 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         """Turn both relays off, pause, then start closing."""
         await self._async_run_direction(self._close_entity)
 
+    async def async_set_cover_position(self, **kwargs: Any) -> None:
+        """Move to a time-estimated target, always stopping after the budget."""
+        from homeassistant.exceptions import ServiceValidationError
+
+        self._validate_parameter_health()
+        target = kwargs.get("position")
+        if type(target) is not int or not 0 <= target <= 100:
+            raise ServiceValidationError("position must be an integer from 0 to 100")
+        self._sync_from_switches()
+        if self._estimator.position is None and target not in (0, 100):
+            raise ServiceValidationError("Unknown position: request an endpoint first")
+        self._command_generation += 1
+        generation = self._command_generation
+        self._cancel_auto_stop_task()
+        self._pending_direction_commands += 1
+        try:
+            async with self._command_lock:
+                self._validate_parameter_health()
+                if self._removing or generation != self._command_generation:
+                    return
+                self._sync_from_switches()
+                position = self._estimator.position
+                if position is None and target not in (0, 100):
+                    raise ServiceValidationError("Unknown position: request an endpoint first")
+                if position is not None and round(position) == target:
+                    await self._async_turn_both_off()
+                    self._target_position = target
+                    self._sync_from_switches()
+                    self.async_write_ha_state()
+                    return
+                opening = target == 100 if position is None else target > position
+                direction = self._open_entity if opening else self._close_entity
+                fraction = 1 if position is None else abs(target - position) / 100
+                duration = fraction * (
+                    self._open_travel_time if opening else self._close_travel_time
+                )
+                await self._async_run_direction_locked(
+                    direction, generation, duration,
+                    target if position is not None else None,
+                )
+                if generation == self._command_generation:
+                    self._target_position = target
+                    self._target_operation = (
+                        "running" if self._auto_stop_task is not None else "idle"
+                    )
+                    self._sync_from_switches()
+                    self.async_write_ha_state()
+        except asyncio.CancelledError as cancellation:
+            await self._async_cleanup_cancelled_command()
+            raise cancellation
+        finally:
+            self._pending_direction_commands -= 1
+
     async def async_stop_cover(self, **kwargs: Any) -> None:
         """Stop either direction and freeze the current estimate."""
         self._command_generation += 1
@@ -306,6 +388,7 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
     async def async_will_remove_from_hass(self) -> None:
         """Leave both actuators in a safe state on unload or reload."""
         self._removing = True
+        self._parameter_epoch += 1
         covers = self.hass.data.get(DOMAIN, {}).get("covers", {})
         if covers.get(self._entry.entry_id) is self:
             covers.pop(self._entry.entry_id)
@@ -338,6 +421,7 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
             raise cancellation
 
     async def _async_run_direction(self, target_entity: str) -> None:
+        self._validate_parameter_health()
         if self._removing:
             return
         self._command_generation += 1
@@ -354,9 +438,14 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
             self._pending_direction_commands -= 1
 
     async def _async_run_direction_locked(
-        self, target_entity: str, generation: int
+        self,
+        target_entity: str,
+        generation: int,
+        duration: float | None = None,
+        requested_target: int | None = None,
     ) -> None:
         """Start one direction while the command lock is held."""
+        self._validate_parameter_health()
         if self._removing or generation != self._command_generation:
             return
         await self._async_turn_both_off()
@@ -367,6 +456,20 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
             await self._async_turn_both_off()
         if generation != self._command_generation:
             return
+        await self._async_confirm_both_off(generation)
+        if generation != self._command_generation or self._removing:
+            return
+        if requested_target is not None:
+            self._sync_from_switches()
+            position = self._estimator.position
+            if position is not None:
+                opening = requested_target > position
+                target_entity = self._open_entity if opening else self._close_entity
+                duration = abs(requested_target - position) / 100 * (
+                    self._open_travel_time if opening else self._close_travel_time
+                )
+                if round(position) == requested_target:
+                    return
         try:
             await self._async_turn_on(target_entity)
         except Exception:
@@ -376,11 +479,11 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
                 _LOGGER.exception("Failed to clean up relays after direction start failure")
             raise
         if (
-            self._auto_stop_at_travel_end
+            (duration is not None or self._auto_stop_at_travel_end)
             and not self._removing
             and generation == self._command_generation
         ):
-            duration = (
+            duration = duration if duration is not None else (
                 self._open_travel_time
                 if target_entity == self._open_entity
                 else self._close_travel_time
@@ -390,6 +493,31 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
             self._auto_stop_task = self.hass.async_create_task(
                 self._async_auto_stop_after(duration, generation)
             )
+
+    async def _async_confirm_both_off(self, generation: int) -> None:
+        """Require observed OFF, not only a successful service acknowledgement."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self._off_confirmation_timeout
+        while generation == self._command_generation and not self._removing:
+            states = [
+                self.hass.states.get(entity)
+                for entity in (self._open_entity, self._close_entity)
+            ]
+            if all(state is not None and state.state == "off" for state in states):
+                return
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                raise HomeAssistantError("Both relays must be observed off before starting")
+            await asyncio.sleep(min(0.01, remaining))
+
+    def _validate_parameter_health(self) -> None:
+        from homeassistant.exceptions import ServiceValidationError
+
+        manager = self.hass.data.get(DOMAIN, {}).get("parameters", {}).get(self._entry.entry_id)
+        if manager is not None and (manager.fault or manager.closing):
+            raise ServiceValidationError(manager.fault or "Hardware policy unloading")
 
     async def _async_cleanup_cancelled_command(self) -> None:
         """Fail safe after a command that already invalidated the active generation."""
@@ -424,12 +552,18 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
                     return
                 self._auto_stop_target_entity = None
                 self._auto_stop_target_confirmed = False
+                self._sync_from_switches()
                 await self._async_turn_both_off()
+                if self._target_position is not None:
+                    self._target_operation = "timer_elapsed"
             self._sync_from_switches()
             self.async_write_ha_state()
         except asyncio.CancelledError:
             raise
         except Exception:
+            if self._target_position is not None:
+                self._target_operation = "error"
+                self.async_write_ha_state()
             _LOGGER.exception("Failed to auto-stop greenhouse roll-up relays")
         finally:
             if self._auto_stop_task is asyncio.current_task():
@@ -481,6 +615,8 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
 
     @callback
     def _cancel_auto_stop_task(self) -> None:
+        self._target_position = None
+        self._target_operation = "idle"
         task = self._auto_stop_task
         self._auto_stop_task = None
         self._auto_stop_target_entity = None
@@ -507,6 +643,7 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
                 self._conflict_stop_task = None
 
     async def _async_turn_both_off(self) -> None:
+        self._sync_from_switches()
         first_error: BaseException | None = None
         for entity_id in (self._open_entity, self._close_entity):
             try:
@@ -520,6 +657,7 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
             except (Exception, asyncio.CancelledError) as error:
                 if first_error is None:
                     first_error = error
+        self._sync_from_switches()
         if first_error is not None:
             raise first_error
 

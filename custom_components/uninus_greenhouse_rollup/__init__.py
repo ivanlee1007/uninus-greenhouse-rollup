@@ -72,6 +72,36 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     from .const import CONF_AUTO_STOP_AT_TRAVEL_END
     from .cover import UninusGreenhouseRollupCover
 
+    async def apply_parameters(call):
+        from .parameters import ParameterManager
+
+        context = call.context
+        # Deny humans before protected target resolution; recheck under both locks.
+        if context.user_id is not None:
+            user = await hass.auth.async_get_user(context.user_id)
+            if user is None:
+                raise UnknownUser(context=context)
+            if not user.is_active or not user.is_admin or not user.permissions.check_entity(
+                call.data["entity_id"], POLICY_CONTROL
+            ):
+                raise Unauthorized(context=context)
+        manager = next((item for item in hass.data.get(DOMAIN, {}).get("parameters", {}).values()
+                        if isinstance(item, ParameterManager)
+                        and item.cover.entity_id == call.data["entity_id"]), None)
+        if manager is None:
+            raise ServiceValidationError("Not a loaded owned dual-switch Cover")
+        return await manager.async_update(call.data["parameters"], context,
+                                          call.data.get("expected_revision"))
+
+    hass.services.async_register(
+        DOMAIN, "apply_parameters", apply_parameters,
+        schema=vol.Schema({
+            vol.Required("entity_id"): vol.All(str, vol.Match(r"\Acover\.[a-z0-9_]+\Z")),
+            vol.Required("parameters"): dict,
+            vol.Optional("expected_revision"): vol.All(int, vol.Range(min=0)),
+        }), supports_response=SupportsResponse.OPTIONAL,
+    )
+
     async def set_auto_stop(call):
         targets = call.data["entity_id"]
         if isinstance(targets, str):
@@ -203,9 +233,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     try:
         if owns_relays:
+            from .cover import UninusGreenhouseRollupCover
+            from .parameters import ParameterManager
+
+            cover = UninusGreenhouseRollupCover(entry, data)
+            manager = ParameterManager(hass, entry, cover)
+            await manager.async_load(data)
+            domain_data.setdefault("parameters", {})[entry.entry_id] = manager
             await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     except Exception:
         if owns_relays:
+            domain_data.get("parameters", {}).pop(entry.entry_id, None)
             _release_relay_ownership(owners, entry.entry_id)
         raise
     return True
@@ -216,12 +254,33 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     data = {**entry.data, **entry.options}
     if _entry_mode(data) == ACTUATOR_MODE_NATIVE_COVER:
         return True
+    manager = hass.data.get(DOMAIN, {}).get("parameters", {}).get(entry.entry_id)
+    if manager is not None:
+        manager.closing = True
+        async with manager.lock:
+            pass
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
         domain_data = hass.data.get(DOMAIN, {})
         owners = domain_data.get(_OWNERS_KEY, {})
+        if domain_data.get("parameters", {}).get(entry.entry_id) is manager:
+            domain_data["parameters"].pop(entry.entry_id, None)
         _release_relay_ownership(owners, entry.entry_id)
+    elif manager is not None:
+        manager.closing = False
     return unloaded
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Remove exactly this entry's integration-owned hardware policy, never foreign state."""
+    from pathlib import Path
+    from homeassistant.exceptions import HomeAssistantError
+    from homeassistant.helpers.storage import Store
+
+    store = Store(hass, 1, f"{DOMAIN}.parameters.{entry.entry_id}")
+    await store.async_remove()
+    if await hass.async_add_executor_job(Path(store.path).exists):
+        raise HomeAssistantError("Hardware policy deletion did not persist")
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

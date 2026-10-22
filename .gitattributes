@@ -1,0 +1,16 @@
+# Preserve the exact reviewed candidate bytes; retain source whitespace checks.
+.github/workflows/ci.yml -text whitespace=cr-at-eol
+README.md -text whitespace=cr-at-eol
+custom_components/uninus_greenhouse_rollup/__init__.py -text whitespace=cr-at-eol
+custom_components/uninus_greenhouse_rollup/config_flow.py -text whitespace=cr-at-eol
+custom_components/uninus_greenhouse_rollup/const.py -text whitespace=cr-at-eol
+custom_components/uninus_greenhouse_rollup/cover.py -text whitespace=cr-at-eol
+custom_components/uninus_greenhouse_rollup/manifest.json -text whitespace=cr-at-eol
+custom_components/uninus_greenhouse_rollup/services.yaml -text whitespace=cr-at-eol
+custom_components/uninus_greenhouse_rollup/strings.json -text whitespace=cr-at-eol
+custom_components/uninus_greenhouse_rollup/translations/en.json -text whitespace=cr-at-eol
+custom_components/uninus_greenhouse_rollup/translations/zh-Hant.json -text whitespace=cr-at-eol
+tests_python/test_config_flow_helpers.py -text whitespace=cr-at-eol
+tests_python/test_entry_modes.py -text whitespace=cr-at-eol
+tests_python/test_integration_contract.py -text whitespace=cr-at-eol
+tests_python/test_runtime_ownership.py -text whitespace=cr-at-eol
