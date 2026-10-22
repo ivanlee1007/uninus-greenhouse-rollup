@@ -64,7 +64,9 @@ class IntegrationContractTest(unittest.TestCase):
         import yaml
         service = "set_auto_stop_at_travel_end"
         definitions = yaml.safe_load((INTEGRATION / "services.yaml").read_text(encoding="utf-8"))
-        self.assertEqual(set(definitions), {service})
+        self.assertEqual(set(definitions), {service, "apply_parameters"})
+        self.assertEqual(set(definitions["apply_parameters"]["fields"]),
+                         {"entity_id", "parameters", "expected_revision"})
         fields = definitions[service]["fields"]
         self.assertEqual(set(fields), {"entity_id", "enabled"})
         self.assertNotIn("target", definitions[service])

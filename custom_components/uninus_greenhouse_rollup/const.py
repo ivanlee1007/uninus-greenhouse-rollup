@@ -1,7 +1,7 @@
 """Constants for the UNiNUS greenhouse roll-up integration."""
 
 DOMAIN = "uninus_greenhouse_rollup"
-PLATFORMS = ["cover"]
+PLATFORMS = ["cover", "number"]
 SERVICE_SET_AUTO_STOP_AT_TRAVEL_END = "set_auto_stop_at_travel_end"
 
 CONF_ACTUATOR_MODE = "actuator_mode"

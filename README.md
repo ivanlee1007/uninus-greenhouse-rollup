@@ -136,7 +136,40 @@ data:
 - 批次在任何寫入前驗證全部目標；任一目標無效即明確報錯，不修改其他目標。全部驗證後，更新期間持有所有目標的命令鎖，且驗證與取得空閒鎖之間不讓出事件迴圈，避免與新命令競爭。
 - 只合併並保存 `auto_stop_at_travel_end` 選項，同步 runtime 與 Cover attribute；**不重新載入、不呼叫繼電器服務、不建立或取消行程計時**。設定從**下一次 Cover 開啟／關閉命令**生效，重新啟動後保留。
 - 可要求服務回應：`{"updated": ["cover.east_rollup", "cover.west_rollup"], "enabled": true}`。若驗證後發生非預期保存／發布失敗，錯誤會列出失敗目標與已更新目標；跨 Config Entry 的保存不是磁碟交易，不保證回復先前成功的寫入。Config Entry 使用 HA 標準延遲保存機制，不承諾回應時已完成磁碟 fsync。
-- 停用代表不再由 HA 於下一次行程結束時主動斷電，請先確認硬體／Switch 計時保護。既有 Integration「設定」與「重新設定」流程仍維持原本的 reload 行為，可能因卸載安全清理而關閉繼電器；本服務刻意不走該流程。
+- 停用代表不再由 HA 於下一次行程結束時主動斷電，請先確認硬體／Switch 計時保護。Integration「設定」與「重新設定」若修改 auto-stop、類型、名稱或來源，仍維持原本必要的 reload 行為，可能因卸載安全清理而關閉繼電器；僅修改下列四個硬體數值則不重新載入。本布林服務刻意不走 reload 流程。
+
+## 原生硬體參數（管理員）
+
+僅整合實際擁有的 `dual_switch` Cover 會建立四個原生 `number`；與 Cover 共用裝置及 Config Entry，預設啟用、CONFIG 類別、BOX 輸入、單位秒。`native_cover` 直通設定不擁有外部馬達，不建立硬體 Number，也拒絕下列參數服務。可在原生 Entities 卡片加入這四個實體，不需要 `input_number` 或新的自訂卡片。
+
+| `parameter_key` | 範圍（秒） | 輸入步距 |
+|---|---|---|
+| `open_travel_time` | 1–3600 | 1 |
+| `close_travel_time` | 1–3600 | 1 |
+| `reverse_dead_time` | 0–10 | 0.1 |
+| `off_confirmation_timeout` | 0.1–30 | 0.1 |
+
+Number attributes 為 `parameter_key`、`parameter_group: hardware`、`policy_revision`，Unique ID 由 Entry ID＋語意欄位組成，改名不改身分。每次數值修改都會影響後續實際 Cover 命令，**必須確認硬體規格，不可在馬達運作時調整**。
+
+```yaml
+action: uninus_greenhouse_rollup.apply_parameters
+data:
+  entity_id: cover.east_rollup
+  parameters:
+    open_travel_time: 120
+    close_travel_time: 130
+    reverse_dead_time: 0.3
+    off_confirmation_timeout: 5
+  expected_revision: 0  # 可省略；指定時須與目前 policy_revision 相同
+```
+
+- 僅接受上述四個數值欄位的非空 mapping，不接受布林、字串、NaN、Infinity、超界或未知鍵。全候選先驗證，單一 Entry 原子更新；CAS 衝突不寫入。可要求回應 `{"revision": 1, "parameters": {全部四個實際值}}`。相同內容不增加 revision 或寫磁碟。Number 單欄更新會在同一鎖內合併**目前**其他欄位。
+- 有人員身分的呼叫，必須是仍有效的管理員，並具有目標 Number／Cover 的 CONTROL 權限；等候鎖之後、第一個保護效果之前重新驗證。沒有 user_id 的可信 HA 內部呼叫仍可使用。不能以 CONFIG 類別或隱藏 UI 當作授權。
+- 僅在估算器閒置、沒有行程／目標安全計時、沒有待執行方向／停止命令，且兩個**實際來源狀態皆為 off**時允許。與原本命令鎖共用擁有權；拒絕編輯不會取消既有安全計時、不會發送 turn_off／turn_on。停止服務仍保留。
+- 修改全開／全關時間會使舊估算位置及可信度失效，顯示 unknown；需再次明確要求安全端點完整校正。不會宣稱已測得抵達。只修改安全間隔／關閉確認逾時不會憑空移動或清除位置可信度。
+- 唯一數值權威是整合擁有的版本化 `.storage/uninus_greenhouse_rollup.parameters.<entry_id>`。第一次從實際 `entry.data`＋`entry.options`（options 優先）合併種子；其後舊數值欄位只作歷史種子，不可覆寫 Store。原生「設定」與「重新設定」皆讀取此權威、經同一管理器寫入；**僅改硬體數值不 reload、不重建 Cover**。名稱／來源／類型／auto-stop 等非數值設定保持原本必要 reload 語意。
+- 保存需檢查實際 Store 磁碟 envelope 及獨立讀回，不把 `Store.async_save` 返回當作落盤證明。不寫 HA 私有全域 config_entries 儲存。損毀／未知版本拒絕載入，不回復預設覆蓋。刪除 Entry 只移除該 Entry 擁有的參數 Store；卸載及等候中寫入不會復活已移除實體。
+- 確定未提交的保存失敗維持舊接受值並回報失敗；已提交但讀回／發布失敗則保留能確認的實際版本，不宣稱回滾，禁止新方向命令及後續參數寫入，停止仍可呼叫。若連獨立重試讀回也失敗，明確標示提交結果不確定，不能把記憶體舊值當成磁碟已回復；修復儲存／發布原因後重新載入 Entry，重新從磁碟權威恢復。
 
 ## 狀態語意
 
@@ -177,11 +210,12 @@ Integration 不會另外建立 Sensor；開啟與覆蓋百分比都在原本同�
 ## 開發
 
 ```bash
-uv run --with homeassistant==2026.7.2 python -m unittest discover -s tests_python -v
+uv run --python 3.14 --with homeassistant==2026.7.2 python -m unittest discover -s tests_python -v
+uv run --python 3.14 --with homeassistant==2026.10.2 python -m unittest discover -s tests_python -v
 python -m compileall -q custom_components
 ```
 
-CI 會執行 Python 狀態估算、Integration contract、hassfest 與 HACS validation。
+CI 原生測試矩陣為 Core `2026.7.2` 與 `2026.10.2`、Python `3.14`，執行原有狀態估算／安全控制及新增原生平台、AuthManager、Store、服務、options、生命週期測試；另有 hassfest 與 HACS validation。原生測試僅使用獨立暫存設定與記憶體 relay，封鎖對外 socket，不連線到任何實際 HA／馬達。
 
 ## License
 

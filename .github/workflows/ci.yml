@@ -7,6 +7,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ha: ['2026.7.2', '2026.10.2']
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
@@ -17,7 +20,7 @@ jobs:
       - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
         with:
           enable-cache: true
-      - run: uv run --with 'homeassistant==2026.7.2' python -m unittest discover -s tests_python -v
+      - run: uv run --python 3.14 --with 'homeassistant==${{ matrix.ha }}' python -m unittest discover -s tests_python -v
       - run: python -m compileall -q custom_components
       - run: git diff --check
 

@@ -27,7 +27,7 @@
       },
       "reconfigure": {
         "title": "Reconfigure legacy dual-switch cover actuator",
-        "description": "Review or change the cover type, name, source switches, travel times, and direction-change safety delay. Saving reloads this actuator.",
+        "description": "Review name, type, sources and hardware timings. Numeric-only saves do not reload; other changes reload. Travel changes invalidate the old estimate. Edit only while idle with both relays off.",
         "data": {
           "name": "Name",
           "actuator_type": "Cover type",
@@ -47,12 +47,14 @@
     },
     "error": {
       "same_switch": "Open and close must use different switches.",
-      "switch_in_use": "One of these switches is already used by another cover actuator."
+      "switch_in_use": "One of these switches is already used by another cover actuator.",
+      "hardware_policy_unavailable": "Hardware policy unavailable: stop, verify both relays OFF and no pending commands; resolve storage/publication faults before reload."
     },
     "abort": {
       "already_configured": "This switch pair is already configured.",
       "reconfigure_successful": "The cover actuator configuration was updated.",
-      "native_cover_no_settings": "The native MQTT Cover is managed by the MQTT integration; UNiNUS does not proxy or duplicate its settings."
+      "native_cover_no_settings": "The native MQTT Cover is managed by the MQTT integration; UNiNUS does not proxy or duplicate its settings.",
+      "hardware_policy_unavailable": "Hardware policy unavailable: stop, verify both relays OFF and no pending commands; resolve storage/publication faults before reload."
     }
   },
   "options": {
@@ -70,11 +72,16 @@
         "data_description": {
           "actuator_type": "For a shade, Open retracts it and Close extends it.",
           "auto_stop_at_travel_end": "When enabled, a full-open or full-close command from this Cover turns off both direction switches after the configured travel time. Existing entries default to off to preserve their current behavior."
-        }
+        },
+        "description": "Hardware Numbers and this form share one policy authority. Edit only while idle with both relays off. Numeric-only saves do not reload; full-travel changes require explicit endpoint calibration again."
       }
     },
     "abort": {
-      "native_cover_no_settings": "A native MQTT Cover has no travel or relay settings managed by UNiNUS."
+      "native_cover_no_settings": "A native MQTT Cover has no travel or relay settings managed by UNiNUS.",
+      "hardware_policy_unavailable": "Hardware policy unavailable: stop, verify both relays OFF and no pending commands; resolve storage/publication faults before reload."
+    },
+    "error": {
+      "hardware_policy_unavailable": "Hardware policy unavailable: stop, verify both relays OFF and no pending commands; resolve storage/publication faults before reload."
     }
   },
   "services": {
@@ -91,6 +98,24 @@
           "description": "True turns off both relays after the next Cover command's travel time. False relies on hardware or switch timers instead; only a boolean is accepted."
         }
       }
+    },
+    "apply_parameters": {
+      "name": "Apply hardware parameters atomically",
+      "description": "Active administrators with entity CONTROL only; loaded owned dual-switch Covers only, never native_cover. Requires idle commands/timers and both relays known off. Verifies the saved disk record. Travel changes invalidate estimates.",
+      "fields": {
+        "entity_id": {
+          "name": "Owned Cover",
+          "description": "One loaded integration-owned dual-switch Cover."
+        },
+        "parameters": {
+          "name": "Hardware parameters",
+          "description": "Nonempty numeric mapping containing only open_travel_time, close_travel_time, reverse_dead_time, off_confirmation_timeout."
+        },
+        "expected_revision": {
+          "name": "Expected revision",
+          "description": "Optional nonnegative integer; stale revisions reject without mutation."
+        }
+      }
     }
   },
   "selector": {
@@ -99,6 +124,22 @@
         "rollup": "Roll-up",
         "skylight": "Skylight",
         "shade": "Shade"
+      }
+    }
+  },
+  "entity": {
+    "number": {
+      "open_travel_time": {
+        "name": "Full opening travel time"
+      },
+      "close_travel_time": {
+        "name": "Full closing travel time"
+      },
+      "reverse_dead_time": {
+        "name": "Direction-change safety delay"
+      },
+      "off_confirmation_timeout": {
+        "name": "Both-relays-off confirmation timeout"
       }
     }
   }

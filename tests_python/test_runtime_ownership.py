@@ -54,10 +54,20 @@ class RuntimeOwnershipTest(unittest.TestCase):
 
 @unittest.skipIf(async_setup_entry is None, "Home Assistant test dependency not installed")
 class RuntimeOwnershipLifecycleTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        from unittest.mock import patch
+        loader = patch("custom_components.uninus_greenhouse_rollup.parameters.ParameterManager.async_load", new=AsyncMock())
+        loader.start()
+        self.addCleanup(loader.stop)
+        store = patch("custom_components.uninus_greenhouse_rollup.parameters.Store")
+        store.start()
+        self.addCleanup(store.stop)
+
     def _entry(self, entry_id: str, open_entity: str, close_entity: str):
         return SimpleNamespace(
-            entry_id=entry_id,
-            data={"open_entity": open_entity, "close_entity": close_entity},
+            entry_id=entry_id, title=entry_id,
+            data={"open_entity": open_entity, "close_entity": close_entity,
+                  "open_travel_time": 120, "close_travel_time": 120},
             options={},
         )
 

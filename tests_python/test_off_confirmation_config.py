@@ -17,6 +17,10 @@ class OffConfirmationConfigTest(IsolatedAsyncioTestCase):
         flow = RollupOptionsFlow()
         flow.handler = 'entry'
         flow.hass = SimpleNamespace(config_entries=SimpleNamespace(async_get_known_entry=lambda _: entry))
+        entry.entry_id = "entry"
+        flow.hass.data = {"uninus_greenhouse_rollup": {"parameters": {"entry":
+            SimpleNamespace(parameters={"open_travel_time": 10, "close_travel_time": 10,
+                                       "reverse_dead_time": 0.2, "off_confirmation_timeout": 5})}}}
         result = await flow.async_step_init()
         fields = {m.schema: m.default() for m in result['data_schema'].schema}
         self.assertEqual(fields.get('off_confirmation_timeout'), 5)

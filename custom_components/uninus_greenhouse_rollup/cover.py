@@ -73,7 +73,8 @@ async def async_setup_entry(
 ) -> None:
     """Set up the remembered cover for one switch pair."""
     data = {**entry.data, **entry.options}
-    async_add_entities([UninusGreenhouseRollupCover(entry, data)])
+    manager = hass.data.get(DOMAIN, {}).get("parameters", {}).get(entry.entry_id)
+    async_add_entities([manager.cover if manager else UninusGreenhouseRollupCover(entry, data)])
 
 
 class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
@@ -127,6 +128,7 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         self._auto_stop_target_entity: str | None = None
         self._auto_stop_target_confirmed = False
         self._removing = False
+        self._parameter_epoch = 0
         self._target_position: int | None = None
         self._target_operation = "idle"
         self._attr_unique_id = entry.entry_id
@@ -139,9 +141,13 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
 
     async def async_added_to_hass(self) -> None:
         """Restore position, then observe both underlying switches."""
+        self._removing = False
         await super().async_added_to_hass()
         last_state = await self.async_get_last_state()
-        if last_state is not None:
+        if last_state is not None and all(
+            last_state.attributes.get(key, getattr(self, "_" + key)) == getattr(self, "_" + key)
+            for key in (CONF_OPEN_TRAVEL_TIME, CONF_CLOSE_TRAVEL_TIME)
+        ):
             self._estimator = RollupEstimator.from_snapshot(
                 self._open_travel_time,
                 self._close_travel_time,
@@ -314,6 +320,7 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         """Move to a time-estimated target, always stopping after the budget."""
         from homeassistant.exceptions import ServiceValidationError
 
+        self._validate_parameter_health()
         target = kwargs.get("position")
         if type(target) is not int or not 0 <= target <= 100:
             raise ServiceValidationError("position must be an integer from 0 to 100")
@@ -326,6 +333,7 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         self._pending_direction_commands += 1
         try:
             async with self._command_lock:
+                self._validate_parameter_health()
                 if self._removing or generation != self._command_generation:
                     return
                 self._sync_from_switches()
@@ -380,6 +388,7 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
     async def async_will_remove_from_hass(self) -> None:
         """Leave both actuators in a safe state on unload or reload."""
         self._removing = True
+        self._parameter_epoch += 1
         covers = self.hass.data.get(DOMAIN, {}).get("covers", {})
         if covers.get(self._entry.entry_id) is self:
             covers.pop(self._entry.entry_id)
@@ -412,6 +421,7 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
             raise cancellation
 
     async def _async_run_direction(self, target_entity: str) -> None:
+        self._validate_parameter_health()
         if self._removing:
             return
         self._command_generation += 1
@@ -435,6 +445,7 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         requested_target: int | None = None,
     ) -> None:
         """Start one direction while the command lock is held."""
+        self._validate_parameter_health()
         if self._removing or generation != self._command_generation:
             return
         await self._async_turn_both_off()
@@ -500,6 +511,13 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
             if remaining <= 0:
                 raise HomeAssistantError("Both relays must be observed off before starting")
             await asyncio.sleep(min(0.01, remaining))
+
+    def _validate_parameter_health(self) -> None:
+        from homeassistant.exceptions import ServiceValidationError
+
+        manager = self.hass.data.get(DOMAIN, {}).get("parameters", {}).get(self._entry.entry_id)
+        if manager is not None and (manager.fault or manager.closing):
+            raise ServiceValidationError(manager.fault or "Hardware policy unloading")
 
     async def _async_cleanup_cancelled_command(self) -> None:
         """Fail safe after a command that already invalidated the active generation."""
