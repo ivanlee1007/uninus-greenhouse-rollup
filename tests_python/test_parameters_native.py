@@ -72,6 +72,63 @@ class NativeParametersTest(unittest.IsolatedAsyncioTestCase):
         return await self.hass.services.async_call(DOMAIN, 'apply_parameters', data,
             blocking=True, return_response=True, context=context)
 
+    async def test_standalone_target_service_and_unavailable_position_survive_new_core(self):
+        from homeassistant.auth import auth_manager_from_config
+        from homeassistant.components.cover import CoverEntityFeature
+        from homeassistant.helpers import restore_state
+        await self.batch({'open_travel_time': 1, 'close_travel_time': 1})
+        cover = self.hass.data[DOMAIN]['covers'][self.entry.entry_id]
+        cover._estimator.position = 20
+        cover._estimator.confidence = 'estimated'
+        cover.async_write_ha_state()
+        self.assertTrue(cover.supported_features & CoverEntityFeature.SET_POSITION)
+        self.assertEqual({entry.domain for entry in self.hass.config_entries.async_entries()}, {DOMAIN})
+        self.writes.clear()
+        await self.hass.services.async_call('cover', 'set_cover_position',
+            {'entity_id': cover.entity_id, 'position': 30}, blocking=True)
+        await asyncio.wait_for(asyncio.shield(cover._auto_stop_task), 2)
+        self.assertEqual(cover.extra_state_attributes['target_operation'], 'timer_elapsed')
+        self.assertFalse(cover.extra_state_attributes['physical_arrival_confirmed'])
+        self.assertEqual([item[0] for item in self.writes],
+                         ['turn_off', 'turn_off', 'turn_on', 'turn_off', 'turn_off'])
+        self.assertEqual(self.hass.states.get('switch.open').state, 'off')
+        self.assertEqual(self.hass.states.get('switch.close').state, 'off')
+        position = cover._estimator.position
+        entry_id = self.entry.entry_id
+        await self.hass.async_start()
+        self.hass.states.async_set('switch.open', 'unavailable')
+        await self.hass.async_block_till_done()
+        self.assertFalse(cover.available)
+        # Install the real Core STOP restore hook even if Core setup was skipped.
+        restore_state.async_get(self.hass).async_setup_dump()
+        await self.hass.async_block_till_done()
+        await self.hass.async_stop()
+
+        self.hass = HomeAssistant(self.temp.name)
+        loader.async_setup(self.hass)
+        self.hass.config_entries = ConfigEntries(self.hass, {})
+        await self.hass.config_entries.async_initialize()
+        dr.async_setup(self.hass)
+        await dr.async_load(self.hass)
+        await er.async_load(self.hass)
+        self.hass.auth = await auth_manager_from_config(self.hass, [], [])
+        async def switch(call):
+            self.hass.states.async_set(call.data['entity_id'], 'off')
+        self.hass.services.async_register('switch', 'turn_off', switch)
+        self.hass.states.async_set('switch.open', 'off')
+        self.hass.states.async_set('switch.close', 'off')
+        await restore_state.async_get(self.hass).async_load()
+        self.assertTrue(await async_setup_component(self.hass, DOMAIN, {}))
+        await self.hass.async_block_till_done()
+        restored = self.hass.data[DOMAIN]['covers'][entry_id]
+        self.assertEqual(restored._estimator.position, position)
+        self.assertEqual(restored._estimator.confidence, 'estimated')
+        self.assertIsNone(restored._auto_stop_task)
+        self.assertIsNone(restored._target_position)
+        self.assertEqual(restored._target_operation, 'idle')
+        self.assertEqual(restored._estimator.command_state, 'idle')
+        self.assertTrue(restored.available)
+
     async def test_native_options_reads_authority_and_numeric_save_does_not_reload(self):
         await self.batch({'open_travel_time': 151})
         manager = self.hass.data[DOMAIN]['parameters'][self.entry.entry_id]
@@ -385,6 +442,42 @@ class NativeParametersTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(manager.cover._open_travel_time, 199)
         self.assertIsNotNone(manager.fault)
         self.assertEqual(self.writes, [])
+
+    async def test_failed_postcommit_reads_reload_new_policy_without_old_calibration(self):
+        from unittest.mock import patch
+        from homeassistant.exceptions import HomeAssistantError
+        manager = self.hass.data[DOMAIN]['parameters'][self.entry.entry_id]
+        manager.cover._estimator.position = 42
+        manager.cover._estimator.confidence = 'estimated'
+        manager.cover.async_write_ha_state()
+        original = manager._read
+        reads = 0
+        async def readback_fault():
+            nonlocal reads
+            reads += 1
+            if reads > 1:
+                raise OSError('postcommit readback fault')
+            return await original()
+        with patch.object(manager, '_read', readback_fault):
+            with self.assertRaises(HomeAssistantError):
+                await self.batch({'open_travel_time': 182})
+        disk = json.loads(Path(manager.store.path).read_text())['data']
+        self.assertEqual(disk['parameters']['open_travel_time'], 182)
+        self.assertEqual(manager.parameters['open_travel_time'], 123)
+        self.assertEqual(manager.cover.current_cover_position, 42)
+        self.assertEqual(self.writes, [])
+        self.assertTrue(await self.hass.config_entries.async_reload(self.entry.entry_id))
+        await self.hass.async_block_till_done()
+        restored = self.hass.data[DOMAIN]['parameters'][self.entry.entry_id]
+        self.assertEqual(restored.parameters['open_travel_time'], 182)
+        self.assertEqual(restored.revision, 1)
+        self.assertIsNone(restored.cover.current_cover_position)
+        self.assertEqual(restored.cover._estimator.confidence, 'unknown')
+        self.assertIsNone(restored.cover._auto_stop_task)
+        with self.assertRaises(HomeAssistantError):
+            await self.hass.services.async_call('cover', 'set_cover_position',
+                {'entity_id': restored.cover.entity_id, 'position': 50}, blocking=True)
+        self.assertFalse(any(service == 'turn_on' for service, entity_id in self.writes))
 
     async def test_restore_cannot_revalidate_old_estimate_after_travel_policy_change(self):
         from unittest.mock import patch

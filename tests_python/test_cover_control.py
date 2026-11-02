@@ -135,6 +135,7 @@ class CoverControlTest(IsolatedAsyncioTestCase):
         ):
             with self.subTest(position=position):
                 self.setUp()
+                self.cover.async_get_last_extra_data = AsyncMock(return_value=None)
                 self.cover.async_get_last_state = AsyncMock(
                     return_value=SimpleNamespace(
                         attributes={

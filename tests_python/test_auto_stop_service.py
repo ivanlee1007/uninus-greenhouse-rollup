@@ -192,6 +192,7 @@ class AutoStopServiceTest(IsolatedAsyncioTestCase):
         from unittest.mock import patch
         self.covers.clear()
         self.cover.async_get_last_state = AsyncMock(return_value=None)
+        self.cover.async_get_last_extra_data = AsyncMock(return_value=None)
         self.cover.async_on_remove = Mock()
         with patch("homeassistant.components.cover.CoverEntity.async_added_to_hass", new=AsyncMock()), \
              patch("custom_components.uninus_greenhouse_rollup.cover.async_track_state_change_event"), \

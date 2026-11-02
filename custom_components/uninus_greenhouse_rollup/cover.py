@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
+from dataclasses import dataclass
 from datetime import timedelta
 import logging
 import math
@@ -34,7 +35,7 @@ from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_time_interval,
 )
-from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
 
 from .const import (
     ACTUATOR_TYPE_ROLLUP,
@@ -64,6 +65,25 @@ _DEVICE_CLASS_BY_ACTUATOR_TYPE = {
     ACTUATOR_TYPE_SKYLIGHT: CoverDeviceClass.WINDOW,
     ACTUATOR_TYPE_SHADE: CoverDeviceClass.SHADE,
 }
+
+
+@dataclass(frozen=True)
+class RollupExtraStoredData(ExtraStoredData):
+    """Remember estimator data even when public Cover attributes are unavailable."""
+
+    position: float | None
+    confidence: str
+    open_travel_time: float
+    close_travel_time: float
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return durable position and the travel model that produced it."""
+        return {
+            "position": self.position,
+            "confidence": self.confidence,
+            CONF_OPEN_TRAVEL_TIME: self.open_travel_time,
+            CONF_CLOSE_TRAVEL_TIME: self.close_travel_time,
+        }
 
 
 async def async_setup_entry(
@@ -99,6 +119,9 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         self._close_entity = data[CONF_CLOSE_ENTITY]
         self._open_travel_time = float(data[CONF_OPEN_TRAVEL_TIME])
         self._close_travel_time = float(data[CONF_CLOSE_TRAVEL_TIME])
+        self._restore_seed_travel_times = (
+            self._open_travel_time, self._close_travel_time
+        )
         self._reverse_dead_time = max(
             0.0, float(data.get(CONF_REVERSE_DEAD_TIME, DEFAULT_REVERSE_DEAD_TIME))
         )
@@ -143,21 +166,29 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         """Restore position, then observe both underlying switches."""
         self._removing = False
         await super().async_added_to_hass()
+        extra_data = await self.async_get_last_extra_data()
         last_state = await self.async_get_last_state()
-        if last_state is not None and all(
-            last_state.attributes.get(key, getattr(self, "_" + key)) == getattr(self, "_" + key)
-            for key in (CONF_OPEN_TRAVEL_TIME, CONF_CLOSE_TRAVEL_TIME)
-        ):
-            self._estimator = RollupEstimator.from_snapshot(
-                self._open_travel_time,
-                self._close_travel_time,
-                {
-                    "position": last_state.attributes.get(ATTR_CURRENT_POSITION),
-                    "confidence": last_state.attributes.get(
-                        "position_confidence", CONFIDENCE_UNKNOWN
-                    ),
-                },
+        attributes = last_state.attributes if last_state is not None else {}
+        snapshot = (
+            extra_data.as_dict() if extra_data is not None else {
+                "position": attributes.get(ATTR_CURRENT_POSITION),
+                "confidence": attributes.get("position_confidence", CONFIDENCE_UNKNOWN),
+            }
+        )
+        if isinstance(snapshot, dict):
+            keys = (CONF_OPEN_TRAVEL_TIME, CONF_CLOSE_TRAVEL_TIME)
+            timing_source = snapshot if any(key in snapshot for key in keys) else attributes
+            saved_times = (
+                tuple(timing_source.get(key) for key in keys)
+                if any(key in timing_source for key in keys)
+                else self._restore_seed_travel_times
             )
+            current_times = (self._open_travel_time, self._close_travel_time)
+            if all(type(value) in (int, float) and value == current
+                   for value, current in zip(saved_times, current_times, strict=True)):
+                self._estimator = RollupEstimator.from_snapshot(
+                    *current_times, snapshot
+                )
 
         self.async_on_remove(
             async_track_state_change_event(
@@ -178,6 +209,14 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         self.hass.data.setdefault(DOMAIN, {}).setdefault("covers", {})[
             self._entry.entry_id
         ] = self
+
+    @property
+    def extra_restore_state_data(self) -> RollupExtraStoredData:
+        """Persist full-precision position independently of entity availability."""
+        return RollupExtraStoredData(
+            self._estimator.position, self._estimator.confidence,
+            self._open_travel_time, self._close_travel_time,
+        )
 
     @callback
     def _handle_state_event(self, event: Event | None) -> None:
@@ -553,8 +592,14 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
                 self._auto_stop_target_entity = None
                 self._auto_stop_target_confirmed = False
                 self._sync_from_switches()
+                if self._target_position is not None:
+                    self._target_operation = "stopping"
+                    self.async_write_ha_state()
                 await self._async_turn_both_off()
                 if self._target_position is not None:
+                    await self._async_confirm_both_off(generation)
+                    if generation != self._command_generation or self._removing:
+                        return
                     self._target_operation = "timer_elapsed"
             self._sync_from_switches()
             self.async_write_ha_state()

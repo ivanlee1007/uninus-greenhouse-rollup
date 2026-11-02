@@ -195,6 +195,44 @@ class TargetPositionTest(IsolatedAsyncioTestCase):
         self.assertEqual([c.args[1] for c in self.services.async_call.await_args_list[before:]], ['turn_off', 'turn_off'])
         self.assertIsNone(self.cover._auto_stop_task)
 
+    async def test_target_stop_ack_without_off_feedback_is_error(self):
+        self.cover._off_confirmation_timeout = 0.02
+        await self.cover.async_set_cover_position(position=30)
+        task = self.cover._auto_stop_task
+        # Acknowledged OFF requests leave the observed physical output ON.
+        self.services.async_call.side_effect = None
+        self.cover._cancel_auto_stop_task()
+        await asyncio.sleep(0)
+        self.cover._target_position = 30
+        with self.assertLogs('custom_components.uninus_greenhouse_rollup.cover', level='ERROR'):
+            await self.cover._async_auto_stop_after(0, self.cover._command_generation)
+        self.assertEqual(self.cover.extra_state_attributes['target_operation'], 'error')
+        self.assertEqual(self.states['switch.open'].state, 'on')
+        self.assertFalse(self.cover.extra_state_attributes['physical_arrival_confirmed'])
+        self.assertTrue(task.cancelled())
+
+    async def test_target_stop_waits_for_delayed_off_feedback(self):
+        self.cover._off_confirmation_timeout = 0.2
+        self.cover._target_position = 30
+        self.states['switch.open'].state = 'on'
+        off_requested = asyncio.Event()
+        async def acknowledge(domain, service, data, **kwargs):
+            off_requested.set()
+        self.services.async_call.side_effect = acknowledge
+        task = asyncio.create_task(self.cover._async_auto_stop_after(0, 0))
+        try:
+            await asyncio.wait_for(off_requested.wait(), 1)
+            await asyncio.sleep(0)
+            self.assertFalse(task.done())
+            self.assertEqual(self.cover.extra_state_attributes['target_operation'], 'stopping')
+            self.states['switch.open'].state = 'off'
+            await asyncio.wait_for(task, 1)
+            self.assertEqual(self.cover.extra_state_attributes['target_operation'], 'timer_elapsed')
+        finally:
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
     async def test_failed_target_stop_reports_error_not_running_or_arrived(self):
         self.cover._open_travel_time = 0.1
         self.cover._estimator.open_travel_time = 0.1

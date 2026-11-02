@@ -71,7 +71,10 @@ class RollupEstimator:
             return None
         if type(value) not in (int, float):
             return None
-        numeric = float(value)
+        try:
+            numeric = float(value)
+        except OverflowError:
+            return None
         if not math.isfinite(numeric) or not 0.0 <= numeric <= 100.0:
             return None
         return numeric
@@ -81,14 +84,15 @@ class RollupEstimator:
         cls,
         open_travel_time: float,
         close_travel_time: float,
-        snapshot: dict[str, Any] | None,
+        snapshot: Any,
     ) -> "RollupEstimator":
         """Restore only durable position and confidence information."""
-        snapshot = snapshot or {}
+        if not isinstance(snapshot, dict):
+            return cls(open_travel_time, close_travel_time)
         confidence = snapshot.get("confidence", CONFIDENCE_UNKNOWN)
         raw_position = snapshot.get("position")
         position = cls._restore_position(raw_position)
-        if confidence not in _VALID_CONFIDENCE or (
+        if not isinstance(confidence, str) or confidence not in _VALID_CONFIDENCE or (
             raw_position is not None and position is None
         ):
             return cls(open_travel_time, close_travel_time)
