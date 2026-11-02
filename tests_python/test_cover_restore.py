@@ -28,14 +28,14 @@ class CoverRestoreTest(IsolatedAsyncioTestCase):
         self.hass.states.async_set("switch.open", "off")
         self.hass.states.async_set("switch.close", "off")
 
-    def make_cover(self):
+    def make_cover(self, open_travel_time=100, close_travel_time=100):
         cover = UninusGreenhouseRollupCover(
             SimpleNamespace(entry_id="restore-test", title="Restore test"),
             {
                 "open_entity": "switch.open",
                 "close_entity": "switch.close",
-                "open_travel_time": 100,
-                "close_travel_time": 100,
+                "open_travel_time": open_travel_time,
+                "close_travel_time": close_travel_time,
                 "reverse_dead_time": 0,
             },
         )
@@ -79,7 +79,9 @@ class CoverRestoreTest(IsolatedAsyncioTestCase):
         ):
             with self.subTest(snapshot=snapshot):
                 cover = self.make_cover()
-                self.set_saved_state(cover, snapshot)
+                self.set_saved_state(cover, snapshot, {
+                    "current_position": 91, "position_confidence": "estimated",
+                })
                 await self.add_cover(cover)
                 self.assertIsNone(cover.current_cover_position)
                 self.assertEqual(cover._estimator.confidence, "unknown")
@@ -99,6 +101,7 @@ class CoverRestoreTest(IsolatedAsyncioTestCase):
                 snapshot = cover.extra_restore_state_data
                 self.assertEqual(snapshot.as_dict(), {
                     "position": position, "confidence": confidence,
+                    "open_travel_time": 100, "close_travel_time": 100,
                 })
                 cover._estimator.position = 22
                 self.assertEqual(snapshot.as_dict()["position"], position)
@@ -122,6 +125,7 @@ class CoverRestoreTest(IsolatedAsyncioTestCase):
         self.assertEqual(cover.current_cover_position, 42)
         self.assertEqual(cover.extra_restore_state_data.as_dict(), {
             "position": 42, "confidence": "estimated",
+            "open_travel_time": 100, "close_travel_time": 100,
         })
 
     async def test_no_saved_position_remains_uncalibrated(self):
@@ -166,6 +170,56 @@ class CoverRestoreTest(IsolatedAsyncioTestCase):
         await self.add_cover(restored)
         self.assertEqual(restored._estimator.position, 63.75)
         self.assertEqual(restored._estimator.confidence, "estimated")
+
+    async def test_changed_travel_time_does_not_revive_old_extra_position(self):
+        old = self.make_cover()
+        old._estimator.position = 37.5
+        old._estimator.confidence = "estimated"
+        snapshot = old.extra_restore_state_data.as_dict()
+        for opening, closing in ((120, 100), (100, 120)):
+            with self.subTest(opening=opening, closing=closing):
+                cover = self.make_cover(opening, closing)
+                self.set_saved_state(cover, snapshot)
+                await self.add_cover(cover)
+                self.assertIsNone(cover.current_cover_position)
+                self.assertEqual(cover._estimator.confidence, "unknown")
+
+    async def test_legacy_extra_position_is_invalid_after_authority_changes_seed_times(self):
+        cover = self.make_cover()
+        # ParameterManager loads new authority after construction from legacy seeds.
+        cover._open_travel_time = 120
+        self.set_saved_state(cover, {"position": 37.5, "confidence": "estimated"})
+        await self.add_cover(cover)
+        self.assertIsNone(cover.current_cover_position)
+        self.assertEqual(cover._estimator.confidence, "unknown")
+
+    async def test_matching_new_travel_model_restores_after_authority_replaces_seeds(self):
+        old = self.make_cover(120, 100)
+        old._estimator.position = 63.75
+        old._estimator.confidence = "estimated"
+        cover = self.make_cover()
+        cover._open_travel_time = 120
+        self.set_saved_state(cover, old.extra_restore_state_data.as_dict(), {
+            "current_position": 91, "open_travel_time": 100, "close_travel_time": 100,
+        })
+        await self.add_cover(cover)
+        self.assertEqual(cover._estimator.position, 63.75)
+        self.assertEqual(cover._estimator.confidence, "estimated")
+
+    async def test_partial_or_invalid_travel_metadata_never_restores_position(self):
+        for timing in (
+            {"open_travel_time": 100},
+            {"open_travel_time": True, "close_travel_time": 100},
+            {"open_travel_time": "100", "close_travel_time": 100},
+            {"open_travel_time": float("nan"), "close_travel_time": 100},
+        ):
+            with self.subTest(timing=timing):
+                cover = self.make_cover()
+                self.set_saved_state(cover, {
+                    "position": 37.5, "confidence": "estimated", **timing,
+                })
+                await self.add_cover(cover)
+                self.assertIsNone(cover.current_cover_position)
 
     async def test_unavailable_position_survives_native_disk_save_and_reload(self):
         cover = self.make_cover()

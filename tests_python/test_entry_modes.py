@@ -31,6 +31,15 @@ except (ModuleNotFoundError, ImportError) as error:
 
 @unittest.skipIf(async_setup_entry is None, "Home Assistant test dependency not installed")
 class EntryModeLifecycleTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        from unittest.mock import patch
+        loader = patch("custom_components.uninus_greenhouse_rollup.parameters.ParameterManager.async_load", new=AsyncMock())
+        loader.start()
+        self.addCleanup(loader.stop)
+        store = patch("custom_components.uninus_greenhouse_rollup.parameters.Store")
+        store.start()
+        self.addCleanup(store.stop)
+
     def _hass(self):
         return SimpleNamespace(
             data={},
@@ -59,10 +68,11 @@ class EntryModeLifecycleTest(unittest.IsolatedAsyncioTestCase):
     async def test_legacy_entry_without_mode_remains_a_dual_switch_adapter(self):
         hass = self._hass()
         entry = SimpleNamespace(
-            entry_id="legacy",
+            entry_id="legacy", title="Legacy",
             data={
                 "open_entity": "switch.open",
                 "close_entity": "switch.close",
+                "open_travel_time": 120, "close_travel_time": 120,
             },
             options={},
         )

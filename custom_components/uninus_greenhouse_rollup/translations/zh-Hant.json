@@ -16,6 +16,7 @@
           "close_entity": "關閉 Switch",
           "open_travel_time": "全開行程秒數",
           "close_travel_time": "全關行程秒數",
+          "off_confirmation_timeout": "雙繼電器關閉確認逾時秒數（0.1–30）",
           "reverse_dead_time": "方向切換安全間隔秒數",
           "auto_stop_at_travel_end": "行程結束後自動關閉兩個方向 Switch"
         },
@@ -26,7 +27,7 @@
       },
       "reconfigure": {
         "title": "重新設定舊版雙 Switch Cover 致動器",
-        "description": "檢查或修改 Cover 類型、名稱、來源 Switch、行程時間與方向切換安全間隔。儲存後會重新載入此致動器。",
+        "description": "檢查類型、名稱、來源與硬體時間。僅修改硬體數值不重新載入；其他設定維持重新載入。修改行程時間會使舊估算失效，請先停止並確認兩方向 off。",
         "data": {
           "name": "名稱",
           "actuator_type": "Cover 類型",
@@ -34,6 +35,7 @@
           "close_entity": "關閉 Switch",
           "open_travel_time": "全開行程秒數",
           "close_travel_time": "全關行程秒數",
+          "off_confirmation_timeout": "雙繼電器關閉確認逾時秒數（0.1–30）",
           "reverse_dead_time": "方向切換安全間隔秒數",
           "auto_stop_at_travel_end": "行程結束後自動關閉兩個方向 Switch"
         },
@@ -45,12 +47,14 @@
     },
     "error": {
       "same_switch": "開啟與關閉不可使用同一個 Switch。",
-      "switch_in_use": "其中一個 Switch 已由其他 Cover 致動器使用。"
+      "switch_in_use": "其中一個 Switch 已由其他 Cover 致動器使用。",
+      "hardware_policy_unavailable": "硬體參數不可修改：請確認閒置、兩個實際繼電器皆為 off、沒有待執行命令，且儲存及發布正常。"
     },
     "abort": {
       "already_configured": "這組 Switch 已經設定。",
       "reconfigure_successful": "Cover 致動器設定已更新。",
-      "native_cover_no_settings": "原生 MQTT Cover 由 MQTT Integration 管理，UNiNUS 不會建立代理或重複設定。"
+      "native_cover_no_settings": "原生 MQTT Cover 由 MQTT Integration 管理，UNiNUS 不會建立代理或重複設定。",
+      "hardware_policy_unavailable": "硬體參數不可修改：請確認閒置、兩個實際繼電器皆為 off、沒有待執行命令，且儲存及發布正常。"
     }
   },
   "options": {
@@ -61,17 +65,23 @@
           "actuator_type": "Cover 類型",
           "open_travel_time": "全開行程秒數",
           "close_travel_time": "全關行程秒數",
+          "off_confirmation_timeout": "雙繼電器關閉確認逾時秒數（0.1–30）",
           "reverse_dead_time": "方向切換安全間隔秒數",
           "auto_stop_at_travel_end": "行程結束後自動關閉兩個方向 Switch"
         },
         "data_description": {
           "actuator_type": "遮陽簾的「開啟」代表收回，「關閉」代表展開。",
           "auto_stop_at_travel_end": "啟用後，由此 Cover 啟動全開或全關時，設定的行程秒數到達後會對開啟與關閉 Switch 都執行 turn_off。既有設定預設關閉，以維持原行為。"
-        }
+        },
+        "description": "硬體數值與原生 Number 共用同一儲存權威，僅閒置且兩方向 off 時可修改；僅修改數值不重新載入。全行程時間改動後必須重新明確校正端點。"
       }
     },
     "abort": {
-      "native_cover_no_settings": "原生 MQTT Cover 沒有需要由 UNiNUS 調整的行程或 Relay 設定。"
+      "native_cover_no_settings": "原生 MQTT Cover 沒有需要由 UNiNUS 調整的行程或 Relay 設定。",
+      "hardware_policy_unavailable": "硬體參數不可修改：請確認閒置、兩個實際繼電器皆為 off、沒有待執行命令，且儲存及發布正常。"
+    },
+    "error": {
+      "hardware_policy_unavailable": "硬體參數不可修改：請確認閒置、兩個實際繼電器皆為 off、沒有待執行命令，且儲存及發布正常。"
     }
   },
   "services": {
@@ -88,6 +98,24 @@
           "description": "true 會在下一次 Cover 命令的行程時間結束後關閉兩個 Switch；false 改依賴硬體或 Switch 計時。僅接受布林值。"
         }
       }
+    },
+    "apply_parameters": {
+      "name": "原子套用硬體參數",
+      "description": "僅限有效管理員及有控制權的整合自有雙 Switch Cover。閒置且兩方向 off 才可修改，經磁碟讀回驗證。行程時間改變會使估算未知。",
+      "fields": {
+        "entity_id": {
+          "name": "Cover 實體",
+          "description": "僅一個已載入的自有 dual_switch Cover，不含 native_cover。"
+        },
+        "parameters": {
+          "name": "硬體數值",
+          "description": "允許 open_travel_time、close_travel_time、reverse_dead_time、off_confirmation_timeout；非空數值 mapping。"
+        },
+        "expected_revision": {
+          "name": "預期版本",
+          "description": "可省略的非負整數；版本不同時不寫入。"
+        }
+      }
     }
   },
   "selector": {
@@ -96,6 +124,22 @@
         "rollup": "捲揚",
         "skylight": "天窗",
         "shade": "遮陽簾"
+      }
+    }
+  },
+  "entity": {
+    "number": {
+      "open_travel_time": {
+        "name": "全開行程時間"
+      },
+      "close_travel_time": {
+        "name": "全關行程時間"
+      },
+      "reverse_dead_time": {
+        "name": "方向切換安全間隔"
+      },
+      "off_confirmation_timeout": {
+        "name": "雙繼電器關閉確認逾時"
       }
     }
   }

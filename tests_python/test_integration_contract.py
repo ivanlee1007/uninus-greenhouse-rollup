@@ -11,7 +11,7 @@ class IntegrationContractTest(unittest.TestCase):
         manifest = json.loads((INTEGRATION / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["domain"], "uninus_greenhouse_rollup")
         self.assertEqual(manifest["name"], "UNiNUS Greenhouse Cover Actuator")
-        self.assertEqual(manifest["version"], "3.2.1")
+        self.assertEqual(manifest["version"], "3.3.0")
         self.assertTrue(manifest["config_flow"])
         self.assertEqual(manifest["integration_type"], "service")
         self.assertEqual(manifest["iot_class"], "calculated")
@@ -64,7 +64,9 @@ class IntegrationContractTest(unittest.TestCase):
         import yaml
         service = "set_auto_stop_at_travel_end"
         definitions = yaml.safe_load((INTEGRATION / "services.yaml").read_text(encoding="utf-8"))
-        self.assertEqual(set(definitions), {service})
+        self.assertEqual(set(definitions), {service, "apply_parameters"})
+        self.assertEqual(set(definitions["apply_parameters"]["fields"]),
+                         {"entity_id", "parameters", "expected_revision"})
         fields = definitions[service]["fields"]
         self.assertEqual(set(fields), {"entity_id", "enabled"})
         self.assertNotIn("target", definitions[service])

@@ -157,6 +157,9 @@ class ReconfigureFlowTest(IsolatedAsyncioTestCase):
             )
         )
 
+        entry.entry_id = "current"
+        flow.hass.data = {"uninus_greenhouse_rollup": {"parameters": {"current":
+            SimpleNamespace(parameters={k: v for k, v in entry.data.items() if k.endswith("time")})}}}
         result = await flow.async_step_init()
 
         self.assertEqual(result["type"].value, "abort")
@@ -180,6 +183,9 @@ class ReconfigureFlowTest(IsolatedAsyncioTestCase):
             )
         )
 
+        entry.entry_id = "current"
+        flow.hass.data = {"uninus_greenhouse_rollup": {"parameters": {"current":
+            SimpleNamespace(parameters={k: v for k, v in entry.data.items() if k.endswith("time")})}}}
         result = await flow.async_step_init()
         defaults = {
             marker.schema: marker.default()
@@ -207,6 +213,9 @@ class ReconfigureFlowTest(IsolatedAsyncioTestCase):
             )
         )
 
+        entry.entry_id = "current"
+        flow.hass.data = {"uninus_greenhouse_rollup": {"parameters": {"current":
+            SimpleNamespace(parameters={k: v for k, v in entry.data.items() if k.endswith("time")})}}}
         result = await flow.async_step_init()
         defaults = {
             marker.schema: marker.default()
@@ -248,6 +257,9 @@ class ReconfigureFlowTest(IsolatedAsyncioTestCase):
             "reverse_dead_time": 0.5,
         }
 
+        flow.hass = SimpleNamespace(data={"uninus_greenhouse_rollup": {"parameters": {"current":
+            SimpleNamespace(parameters={"open_travel_time": 90, "close_travel_time": 120,
+                                       "reverse_dead_time": 0.2}, async_update=AsyncMock())}}})
         result = await flow.async_step_reconfigure(user_input)
 
         self.assertEqual(result["reason"], "reconfigure_successful")

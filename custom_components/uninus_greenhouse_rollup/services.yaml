@@ -11,3 +11,24 @@ set_auto_stop_at_travel_end:
       required: true
       selector:
         boolean:
+
+apply_parameters:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: uninus_greenhouse_rollup
+          domain: cover
+    parameters:
+      required: true
+      example: '{"open_travel_time": 120, "close_travel_time": 130}'
+      selector:
+        object:
+    expected_revision:
+      required: false
+      selector:
+        number:
+          min: 0
+          step: 1
+          mode: box
