@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
+from dataclasses import dataclass
 from datetime import timedelta
 import logging
 import time
@@ -33,7 +34,7 @@ from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_time_interval,
 )
-from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
 
 from .const import (
     ACTUATOR_TYPE_ROLLUP,
@@ -61,6 +62,18 @@ _DEVICE_CLASS_BY_ACTUATOR_TYPE = {
     ACTUATOR_TYPE_SKYLIGHT: CoverDeviceClass.WINDOW,
     ACTUATOR_TYPE_SHADE: CoverDeviceClass.SHADE,
 }
+
+
+@dataclass(frozen=True)
+class RollupExtraStoredData(ExtraStoredData):
+    """Remember estimator data even when public Cover attributes are unavailable."""
+
+    position: float | None
+    confidence: str
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return only durable position data, never active relay commands."""
+        return {"position": self.position, "confidence": self.confidence}
 
 
 async def async_setup_entry(
@@ -126,18 +139,27 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
     async def async_added_to_hass(self) -> None:
         """Restore position, then observe both underlying switches."""
         await super().async_added_to_hass()
-        last_state = await self.async_get_last_state()
-        if last_state is not None:
+        extra_data = await self.async_get_last_extra_data()
+        if extra_data is not None:
             self._estimator = RollupEstimator.from_snapshot(
                 self._open_travel_time,
                 self._close_travel_time,
-                {
-                    "position": last_state.attributes.get(ATTR_CURRENT_POSITION),
-                    "confidence": last_state.attributes.get(
-                        "position_confidence", CONFIDENCE_UNKNOWN
-                    ),
-                },
+                extra_data.as_dict(),
             )
+        else:
+            # Migrate installations that only saved public state attributes.
+            last_state = await self.async_get_last_state()
+            if last_state is not None:
+                self._estimator = RollupEstimator.from_snapshot(
+                    self._open_travel_time,
+                    self._close_travel_time,
+                    {
+                        "position": last_state.attributes.get(ATTR_CURRENT_POSITION),
+                        "confidence": last_state.attributes.get(
+                            "position_confidence", CONFIDENCE_UNKNOWN
+                        ),
+                    },
+                )
 
         self.async_on_remove(
             async_track_state_change_event(
@@ -158,6 +180,13 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         self.hass.data.setdefault(DOMAIN, {}).setdefault("covers", {})[
             self._entry.entry_id
         ] = self
+
+    @property
+    def extra_restore_state_data(self) -> RollupExtraStoredData:
+        """Persist full-precision position independently of entity availability."""
+        return RollupExtraStoredData(
+            self._estimator.position, self._estimator.confidence
+        )
 
     @callback
     def _handle_state_event(self, event: Event) -> None:
