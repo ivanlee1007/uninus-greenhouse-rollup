@@ -1,5 +1,13 @@
 # 致動器 PR 收尾與單機驗收
 
+## 新增候選：Legacy EMOS 相容模式（僅離線，尚未部署／發布）
+
+本次增加逐台原生 Options 選擇與獨立風險確認，預設 standard 不變；相容模式容許 unknown 回授，依自己的成功命令估算，略過觀察到 OFF 的確認但強制計時停止。模式切換原地套用、不操作繼電器、不 reload。來源缺少、停用、unavailable、已知 ON 或忙碌狀態的設定變更仍被拒絕。
+
+永久測試為 `test_legacy_feedback.py`、`test_legacy_options.py` 與 `test_cover_restore.py` 的 legacy 恢復案例；涵蓋原生無回報啟動、Options 風險確認、生命週期擁有權、停止／反向互鎖、延遲回報、外部邊緣、衝突、失聯、服務失敗／取消及強制 timer。CI 保留舊版矩陣並加入 HA `2026.11.0`；這些均不是實體馬達驗收。
+
+詳見 [模式契約及逐項實機驗收](legacy-emos-mode.md)。下列既有 v3.3.0 live／純模擬紀錄只屬先前 standard 行為，不構成本次相容模式的 live 驗收，也不授權對正式 HA 建立表單、修改設定或致動。版本保持不變。
+
 ## 範圍
 
 本次僅完成 `uninus_greenhouse_rollup`：指定估算開度、雙路 OFF 確認、原生硬體參數與 v3.2.1 位置還原相容。

@@ -38,6 +38,9 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
 
 from .const import (
+    CONF_FEEDBACK_MODE,
+    FEEDBACK_STANDARD,
+    FEEDBACK_LEGACY_EMOS,
     ACTUATOR_TYPE_ROLLUP,
     ACTUATOR_TYPE_SHADE,
     ACTUATOR_TYPE_SKYLIGHT,
@@ -75,15 +78,22 @@ class RollupExtraStoredData(ExtraStoredData):
     confidence: str
     open_travel_time: float
     close_travel_time: float
+    motion_interrupted: bool | None = None
+    stop_command_error: bool | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Return durable position and the travel model that produced it."""
-        return {
+        result = {
             "position": self.position,
             "confidence": self.confidence,
             CONF_OPEN_TRAVEL_TIME: self.open_travel_time,
             CONF_CLOSE_TRAVEL_TIME: self.close_travel_time,
         }
+        if self.motion_interrupted is not None:
+            result["motion_interrupted"] = self.motion_interrupted
+        if self.stop_command_error is not None:
+            result["stop_command_error"] = self.stop_command_error
+        return result
 
 
 async def async_setup_entry(
@@ -111,6 +121,15 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
 
     def __init__(self, entry: ConfigEntry, data: dict[str, Any]) -> None:
         self._entry = entry
+        self._feedback_mode = data.get(CONF_FEEDBACK_MODE, FEEDBACK_STANDARD)
+        if self._feedback_mode not in (FEEDBACK_STANDARD, FEEDBACK_LEGACY_EMOS):
+            raise ValueError("Unsupported feedback_mode")
+        self._legacy_direction = "idle"
+        self._legacy_feedback_quarantine: set[str] = set()
+        self._legacy_starting_direction = "idle"
+        self._position_basis = "unknown"
+        self._interrupted_motion = False
+        self._stop_error = False
         self._attr_device_class = _DEVICE_CLASS_BY_ACTUATOR_TYPE.get(
             data.get(CONF_ACTUATOR_TYPE, DEFAULT_ACTUATOR_TYPE),
             CoverDeviceClass.AWNING,
@@ -128,6 +147,8 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         self._auto_stop_at_travel_end = bool(
             data.get(CONF_AUTO_STOP_AT_TRAVEL_END, DEFAULT_AUTO_STOP_AT_TRAVEL_END)
         )
+        if self._feedback_mode == FEEDBACK_LEGACY_EMOS:
+            self._auto_stop_at_travel_end = True
         self._estimator = RollupEstimator(
             self._open_travel_time,
             self._close_travel_time,
@@ -176,6 +197,9 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
             }
         )
         if isinstance(snapshot, dict):
+            self._interrupted_motion = snapshot.get("motion_interrupted", False) is True
+            self._stop_error = snapshot.get("stop_command_error", False) is True
+            self._interrupted_motion |= self._stop_error
             keys = (CONF_OPEN_TRAVEL_TIME, CONF_CLOSE_TRAVEL_TIME)
             timing_source = snapshot if any(key in snapshot for key in keys) else attributes
             saved_times = (
@@ -189,6 +213,8 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
                 self._estimator = RollupEstimator.from_snapshot(
                     *current_times, snapshot
                 )
+                if self._estimator.position is not None:
+                    self._position_basis = "remembered"
 
         self.async_on_remove(
             async_track_state_change_event(
@@ -216,6 +242,8 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         return RollupExtraStoredData(
             self._estimator.position, self._estimator.confidence,
             self._open_travel_time, self._close_travel_time,
+            self._interrupted_motion if self._feedback_mode == FEEDBACK_LEGACY_EMOS else None,
+            self._stop_error if self._feedback_mode == FEEDBACK_LEGACY_EMOS else None,
         )
 
     @callback
@@ -223,12 +251,14 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         """Synchronize after direct, automation, or card switch changes."""
         if self._removing:
             return
+        if self._feedback_mode == FEEDBACK_LEGACY_EMOS:
+            self._handle_legacy_feedback(event)
         target_was_running = (
-            self._target_position is not None and self._auto_stop_task is not None
+            (self._target_position is not None or self._feedback_mode == FEEDBACK_LEGACY_EMOS)
+            and self._auto_stop_task is not None
         )
         self._cancel_auto_stop_if_source_changed(event)
         self._sync_from_switches()
-        self.async_write_ha_state()
         if (
             (
                 self._estimator.command_state == "conflict"
@@ -240,6 +270,7 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
             self._conflict_stop_task = self.hass.async_create_task(
                 self._async_fail_safe_stop()
             )
+        self.async_write_ha_state()
 
     @callback
     def _handle_tick(self, _now: Any) -> None:
@@ -252,14 +283,35 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         open_state = self.hass.states.get(self._open_entity)
         close_state = self.hass.states.get(self._close_entity)
         invalid = {STATE_UNAVAILABLE, STATE_UNKNOWN}
+        if self._feedback_mode == FEEDBACK_LEGACY_EMOS:
+            invalid = {STATE_UNAVAILABLE}
         self._relays_available = bool(
             open_state
             and close_state
             and open_state.state not in invalid
             and close_state.state not in invalid
         )
+        if self._feedback_mode == FEEDBACK_LEGACY_EMOS:
+            from homeassistant.helpers import entity_registry as er
+            registry = self.hass.data.get(er.DATA_REGISTRY)
+            self._relays_available = self._relays_available and all(
+                state is not None and state.state in ("off", "on", STATE_UNKNOWN)
+                for state in (open_state, close_state))
+            if registry is not None and any(
+                (item := registry.async_get(e)) is not None and item.disabled
+                for e in (self._open_entity, self._close_entity)):
+                self._relays_available = False
         if not self._relays_available:
             self._estimator.sync(open_on=False, close_on=False, now=now)
+            return
+        if self._feedback_mode == FEEDBACK_LEGACY_EMOS:
+            conflict = open_state.state == STATE_ON and close_state.state == STATE_ON
+            self._estimator.sync(
+                open_on=conflict or self._legacy_direction == "opening",
+                close_on=conflict or self._legacy_direction == "closing", now=now,
+            )
+            if self._estimator.position is not None:
+                self._estimator.confidence = "estimated"
             return
         self._estimator.sync(
             open_on=open_state.state == STATE_ON,
@@ -271,6 +323,79 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
     def available(self) -> bool:
         """Both actuator entities must be available for safe control."""
         return self._relays_available
+
+    def _validate_legacy_motion(self) -> None:
+        """Unknown is allowed, but missing, disabled and unavailable are not."""
+        from homeassistant.exceptions import ServiceValidationError
+        from homeassistant.helpers import entity_registry as er
+
+        registry = self.hass.data.get(er.DATA_REGISTRY)
+        for entity_id in (self._open_entity, self._close_entity):
+            state = self.hass.states.get(entity_id)
+            registered = registry.async_get(entity_id) if registry is not None else None
+            if (state is None or state.state not in ("on", "off", STATE_UNKNOWN)
+                    or registered is not None and registered.disabled):
+                raise ServiceValidationError(f"Legacy relay unavailable: {entity_id}")
+        if all(self.hass.states.get(e).state == STATE_ON
+               for e in (self._open_entity, self._close_entity)):
+            raise ServiceValidationError("Conflicting relay feedback")
+
+    @callback
+    def _handle_legacy_feedback(self, event: Event | None) -> None:
+        """Consume transitions, never replay cached ON on ticks.
+
+        Local commands retain their forced stop budget despite delayed OFF.
+        An opposite ON remains a safety event. Only an OFF->ON edge with the
+        other relay OFF starts external estimation (never unknown->ON replay).
+        """
+        if event is None:
+            return
+        data = event.data
+        entity = data.get("entity_id")
+        old = getattr(data.get("old_state"), "state", None)
+        new = getattr(data.get("new_state"), "state", None)
+        if entity not in (self._open_entity, self._close_entity) or old == new:
+            return
+        opening = entity == self._open_entity
+        opposite = self.hass.states.get(self._close_entity if opening else self._open_entity)
+        direction = (self._legacy_starting_direction
+                     if self._legacy_starting_direction != "idle" else self._legacy_direction)
+        if direction != "idle":
+            expected = self._open_entity if direction == "opening" else self._close_entity
+            if entity != expected and new == STATE_ON and not self._conflict_stop_pending:
+                # Invalidate synchronously: ON may return without yielding to the
+                # fail-safe task, or may raise/cancel after energizing.
+                self._command_generation += 1
+                self._cancel_auto_stop_task()
+                self._legacy_feedback_quarantine.update((self._open_entity, self._close_entity))
+                self._conflict_stop_pending = True
+                self._conflict_stop_task = self.hass.async_create_task(self._async_fail_safe_stop())
+            if self._position_basis == "feedback_estimated" and new == "off" and entity == expected:
+                self._legacy_direction = "idle"
+                self._cancel_auto_stop_task()
+            return
+        if self._command_lock.locked() or self._pending_direction_commands or self._pending_stop_commands:
+            return
+        if entity in self._legacy_feedback_quarantine:
+            # A delayed command echo may look like OFF->ON after local STOP.
+            # Require a separately observed idle OFF before trusting that source
+            # for a new external run. Ticks/cached OFF do not clear this fence.
+            if new == "off":
+                self._legacy_feedback_quarantine.discard(entity)
+            return
+        if old == "off" and new == STATE_ON and opposite is not None and opposite.state == "off":
+            try:
+                self._validate_legacy_motion()
+            except Exception:
+                return
+            self._command_generation += 1
+            self._legacy_direction = "opening" if opening else "closing"
+            self._position_basis = "feedback_estimated"
+            self._interrupted_motion = True
+            duration = self._open_travel_time if opening else self._close_travel_time
+            self._auto_stop_target_entity = entity
+            self._auto_stop_task = self.hass.async_create_task(
+                self._async_auto_stop_after(duration, self._command_generation))
 
     @property
     def current_cover_position(self) -> int | None:
@@ -302,6 +427,11 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         close_state = self.hass.states.get(self._close_entity)
         position = self.current_cover_position
         return {
+            "feedback_mode": self._feedback_mode,
+            "position_basis": self._position_basis,
+            "position_unverified": True,
+            "motion_interrupted": self._interrupted_motion,
+            "stop_command_error": self._stop_error,
             "coverage_position": (
                 100 - position if self.available and position is not None else None
             ),
@@ -416,6 +546,8 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         try:
             async with self._command_lock:
                 await self._async_turn_both_off()
+                if self._feedback_mode == FEEDBACK_LEGACY_EMOS:
+                    self._interrupted_motion = False
         except asyncio.CancelledError as cancellation:
             await self._async_cleanup_cancelled_command()
             raise cancellation
@@ -499,6 +631,8 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         if generation != self._command_generation or self._removing:
             return
         if requested_target is not None:
+            if self._feedback_mode == FEEDBACK_LEGACY_EMOS:
+                self._validate_legacy_motion()
             self._sync_from_switches()
             position = self._estimator.position
             if position is not None:
@@ -517,8 +651,16 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
             except Exception:
                 _LOGGER.exception("Failed to clean up relays after direction start failure")
             raise
+        if self._feedback_mode == FEEDBACK_LEGACY_EMOS:
+            if generation != self._command_generation or self._removing:
+                await self._async_turn_both_off()
+                return
+            self._legacy_direction = "opening" if target_entity == self._open_entity else "closing"
+            self._position_basis = "command_estimated"
+            self._interrupted_motion = True
+            self._sync_from_switches()
         if (
-            (duration is not None or self._auto_stop_at_travel_end)
+            (duration is not None or self._auto_stop_at_travel_end or self._feedback_mode == FEEDBACK_LEGACY_EMOS)
             and not self._removing
             and generation == self._command_generation
         ):
@@ -532,10 +674,17 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
             self._auto_stop_task = self.hass.async_create_task(
                 self._async_auto_stop_after(duration, generation)
             )
+        if self._feedback_mode == FEEDBACK_LEGACY_EMOS:
+            # Arm safety first; publication errors may not disarm the stop.
+            self.async_write_ha_state()
 
     async def _async_confirm_both_off(self, generation: int) -> None:
         """Require observed OFF, not only a successful service acknowledgement."""
         from homeassistant.exceptions import HomeAssistantError
+
+        if self._feedback_mode == FEEDBACK_LEGACY_EMOS:
+            self._validate_legacy_motion()
+            return
 
         loop = asyncio.get_running_loop()
         deadline = loop.time() + self._off_confirmation_timeout
@@ -594,8 +743,14 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
                 self._sync_from_switches()
                 if self._target_position is not None:
                     self._target_operation = "stopping"
-                    self.async_write_ha_state()
+                    if self._feedback_mode == FEEDBACK_LEGACY_EMOS:
+                        with suppress(Exception):
+                            self.async_write_ha_state()
+                    else:
+                        self.async_write_ha_state()
                 await self._async_turn_both_off()
+                if self._feedback_mode == FEEDBACK_LEGACY_EMOS:
+                    self._interrupted_motion = False
                 if self._target_position is not None:
                     await self._async_confirm_both_off(generation)
                     if generation != self._command_generation or self._removing:
@@ -606,10 +761,11 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         except asyncio.CancelledError:
             raise
         except Exception:
+            _LOGGER.exception("Failed to auto-stop greenhouse roll-up relays")
             if self._target_position is not None:
                 self._target_operation = "error"
-                self.async_write_ha_state()
-            _LOGGER.exception("Failed to auto-stop greenhouse roll-up relays")
+                with suppress(Exception):
+                    self.async_write_ha_state()
         finally:
             if self._auto_stop_task is asyncio.current_task():
                 self._auto_stop_task = None
@@ -618,6 +774,8 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
 
     @callback
     def _cancel_auto_stop_if_source_changed(self, event: Event | None = None) -> None:
+        if self._feedback_mode == FEEDBACK_LEGACY_EMOS:
+            return
         target_entity = self._auto_stop_target_entity
         if self._auto_stop_task is None or target_entity is None:
             return
@@ -689,6 +847,12 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
 
     async def _async_turn_both_off(self) -> None:
         self._sync_from_switches()
+        if self._feedback_mode == FEEDBACK_LEGACY_EMOS:
+            if self._legacy_direction != "idle":
+                self._legacy_feedback_quarantine.add(
+                    self._open_entity if self._legacy_direction == "opening" else self._close_entity)
+            self._legacy_direction = "idle"
+            self._estimator.sync(open_on=False, close_on=False, now=time.monotonic())
         first_error: BaseException | None = None
         for entity_id in (self._open_entity, self._close_entity):
             try:
@@ -703,14 +867,26 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
                 if first_error is None:
                     first_error = error
         self._sync_from_switches()
+        if self._feedback_mode == FEEDBACK_LEGACY_EMOS:
+            self._stop_error = first_error is not None
         if first_error is not None:
             raise first_error
 
     async def _async_turn_on(self, entity_id: str) -> None:
-        await self.hass.services.async_call(
-            SWITCH_DOMAIN,
-            SERVICE_TURN_ON,
-            {ATTR_ENTITY_ID: entity_id},
-            blocking=True,
-            context=self._context,
-        )
+        if self._feedback_mode == FEEDBACK_LEGACY_EMOS:
+            self._legacy_feedback_quarantine.add(entity_id)
+            # Dispatch may energize before raising. Retain durable uncertainty
+            # and interlock intent without starting the successful-run estimator.
+            self._interrupted_motion = True
+            self._legacy_starting_direction = (
+                "opening" if entity_id == self._open_entity else "closing")
+        try:
+            await self.hass.services.async_call(
+                SWITCH_DOMAIN,
+                SERVICE_TURN_ON,
+                {ATTR_ENTITY_ID: entity_id},
+                blocking=True,
+                context=self._context,
+            )
+        finally:
+            self._legacy_starting_direction = "idle"

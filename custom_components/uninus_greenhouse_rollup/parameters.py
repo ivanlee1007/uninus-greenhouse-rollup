@@ -116,7 +116,7 @@ class ParameterManager:
         ):
             raise Unauthorized(context=context)
 
-    def _idle(self):
+    def _idle(self, *, allow_unknown=False):
         cover = self.cover
         if (cover._pending_direction_commands or cover._pending_stop_commands
                 or cover._conflict_stop_pending or cover._auto_stop_task is not None
@@ -125,8 +125,71 @@ class ParameterManager:
             raise ServiceValidationError('Hardware edit requires idle command/timer state')
         for relay_id in (cover._open_entity, cover._close_entity):
             state = self.hass.states.get(relay_id)
-            if state is None or state.state != 'off':
+            allowed = ('off', 'unknown') if allow_unknown or cover._feedback_mode == 'legacy_emos' else ('off',)
+            if state is None or state.state not in allowed or cover._stop_error:
                 raise ServiceValidationError('Hardware edit requires both relays known OFF')
+        if allow_unknown or cover._feedback_mode == 'legacy_emos':
+            cover._validate_legacy_motion()
+
+    async def async_update_options(self, changes, context, *, expected_revision=None,
+                                   expected_epoch=None, expected_options=None):
+        """Persist and apply idle-only options without reload or relay I/O."""
+        from .cover import _DEVICE_CLASS_BY_ACTUATOR_TYPE
+
+        cover = self.cover
+        epoch = cover._parameter_epoch
+        targets = (cover.entity_id,)
+        await self._authorize(context, targets)
+        async with self.lock:
+            await self._authorize(context, targets)
+            self._owned()
+            if cover._command_lock.locked() or epoch != cover._parameter_epoch:
+                raise ServiceValidationError('Hardware command or options pending')
+            async with cover._command_lock:
+                await self._authorize(context, targets)
+                self._owned()
+                # Confirmation is a CAS at the final non-yielding mode commit,
+                # not a grant checked only before authorization/admission awaits.
+                if (epoch != cover._parameter_epoch or cover.entity_id != targets[0]
+                        or expected_epoch is not None and expected_epoch != cover._parameter_epoch
+                        or expected_revision is not None and expected_revision != self.revision
+                        or expected_options is not None and expected_options != dict(self.entry.options)):
+                    raise ServiceValidationError('Legacy confirmation owner changed')
+                mode = changes.get('feedback_mode', cover._feedback_mode)
+                self._idle(allow_unknown=mode != cover._feedback_mode)
+                if mode not in ('standard', 'legacy_emos'):
+                    raise ServiceValidationError('Invalid feedback mode')
+                if mode == 'legacy_emos' and changes.get('auto_stop_at_travel_end') is False:
+                    raise ServiceValidationError('Legacy EMOS requires timer stop')
+                # Disabled registry entries are not an unknown-feedback exception.
+                from homeassistant.helpers import entity_registry as er
+                registry = self.hass.data.get(er.DATA_REGISTRY)
+                if registry is not None and any(
+                    (item := registry.async_get(e)) is not None and item.disabled
+                    for e in (cover._open_entity, cover._close_entity)):
+                    raise ServiceValidationError('Disabled relay')
+                options = {**self.entry.options, **changes}
+                if mode == 'legacy_emos':
+                    options['auto_stop_at_travel_end'] = True
+                error = None
+                try:
+                    self.hass.config_entries.async_update_entry(self.entry, options=options)
+                except Exception as exc:
+                    error = exc
+                # Reconcile actual native entry even if notification/save raised.
+                actual = {**self.entry.data, **self.entry.options}
+                cover._feedback_mode = actual.get('feedback_mode', 'standard')
+                cover._auto_stop_at_travel_end = (
+                    cover._feedback_mode == 'legacy_emos'
+                    or actual.get('auto_stop_at_travel_end', False))
+                cover._attr_device_class = _DEVICE_CLASS_BY_ACTUATOR_TYPE.get(
+                    actual.get('actuator_type', 'rollup'))
+                cover._parameter_epoch += 1
+                cover._sync_from_switches()
+                cover.async_write_ha_state()
+                if error is not None or any(self.entry.options.get(k) != v for k, v in options.items()):
+                    raise ServiceValidationError('Failed to save options') from error
+                return options
 
     def _apply(self):
         cover = self.cover
@@ -143,7 +206,7 @@ class ParameterManager:
         for number in tuple(self.numbers):
             number.async_write_ha_state()
 
-    def _revalidate(self, targets, epoch, number_identity_guard=None):
+    def _revalidate(self, targets, epoch, number_identity_guard=None, *, allow_unknown=False):
         if number_identity_guard is not None:
             number_identity_guard()
         self._owned()
@@ -151,10 +214,10 @@ class ParameterManager:
                 or targets[0] != targets[-1] and not any(
                     number.entity_id == targets[0] for number in self.numbers)):
             raise ServiceValidationError('Hardware parameter target identity changed')
-        self._idle()
+        self._idle(allow_unknown=allow_unknown)
 
     async def async_update(self, changes, context, expected_revision=None, entity_id=None,
-                           number_identity_guard=None):
+                           number_identity_guard=None, *, allow_unknown=False):
         changes = validate(changes)
         if expected_revision is not None and (type(expected_revision) is not int or expected_revision < 0):
             raise ServiceValidationError('expected_revision must be a nonnegative integer')
@@ -166,13 +229,13 @@ class ParameterManager:
             number_identity_guard()
         async with self.lock:
             await self._authorize(context, targets)
-            self._revalidate(targets, epoch, number_identity_guard)
+            self._revalidate(targets, epoch, number_identity_guard, allow_unknown=allow_unknown)
             # Do not queue behind active motor commands. A free acquire cannot yield.
             if self.cover._command_lock.locked():
                 raise ServiceValidationError('Hardware command pending')
             async with self.cover._command_lock:
                 await self._authorize(context, targets)
-                self._revalidate(targets, epoch, number_identity_guard)
+                self._revalidate(targets, epoch, number_identity_guard, allow_unknown=allow_unknown)
                 # Store's loaded cache is not authority: inspect the active envelope
                 # before CAS, no-op or merge. A failed read must never reseed it.
                 actual = None
@@ -183,7 +246,7 @@ class ParameterManager:
                     read_error = exc
                 # The read yielded; stale principals/owners may not even latch a fault.
                 await self._authorize(context, targets)
-                self._revalidate(targets, epoch, number_identity_guard)
+                self._revalidate(targets, epoch, number_identity_guard, allow_unknown=allow_unknown)
                 if read_error is not None:
                     self.fault = 'Hardware policy authority unreadable; reload required'
                     raise ServiceValidationError(self.fault) from read_error
@@ -203,7 +266,8 @@ class ParameterManager:
                 # Admission occurs here, before the first durable effect. Retain command
                 # ownership until the actual write/readback has settled, even on cancel.
                 task = self.hass.async_create_task(self._commit(
-                    record, previous, context, targets, epoch, number_identity_guard))
+                    record, previous, context, targets, epoch, number_identity_guard,
+                    allow_unknown=allow_unknown))
                 cancellation = None
                 while not task.done():
                     try:
@@ -215,9 +279,10 @@ class ParameterManager:
                     raise cancellation
                 return result
 
-    async def _commit(self, record, previous, context, targets, epoch, number_identity_guard=None):
+    async def _commit(self, record, previous, context, targets, epoch, number_identity_guard=None,
+                      *, allow_unknown=False):
         await self._authorize(context, targets)
-        self._revalidate(targets, epoch, number_identity_guard)
+        self._revalidate(targets, epoch, number_identity_guard, allow_unknown=allow_unknown)
         error = None
         try:
             await self.store.async_save(record)

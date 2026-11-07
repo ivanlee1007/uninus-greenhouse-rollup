@@ -12,6 +12,10 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
 from .const import (
+    CONF_FEEDBACK_MODE,
+    FEEDBACK_STANDARD,
+    FEEDBACK_LEGACY_EMOS,
+    CONF_ACKNOWLEDGE_LEGACY_RISK,
     ACTUATOR_MODE_DUAL_SWITCH,
     ACTUATOR_MODE_NATIVE_COVER,
     ACTUATOR_TYPES,
@@ -251,6 +255,12 @@ class UninusGreenhouseRollupConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
                     CONF_ACTUATOR_TYPE,
                     current.get(CONF_ACTUATOR_TYPE, DEFAULT_ACTUATOR_TYPE),
                 )
+                # Reconfigure does not offer mode selection or acknowledgement;
+                # never silently reset an explicitly selected compatibility mode.
+                if CONF_FEEDBACK_MODE in current:
+                    data[CONF_FEEDBACK_MODE] = current[CONF_FEEDBACK_MODE]
+                if data.get(CONF_FEEDBACK_MODE) == FEEDBACK_LEGACY_EMOS:
+                    data[CONF_AUTO_STOP_AT_TRAVEL_END] = True
                 return self.async_update_reload_and_abort(
                     entry,
                     unique_id=_pair_unique_id(
@@ -293,22 +303,66 @@ class RollupOptionsFlow(config_entries.OptionsFlowWithReload):
         current.setdefault(CONF_AUTO_STOP_AT_TRAVEL_END, DEFAULT_AUTO_STOP_AT_TRAVEL_END)
         if user_input is not None:
             try:
-                await manager.async_update(
-                    {key: user_input[key] for key in RANGES if key in user_input},
+                requested_mode = user_input.get(CONF_FEEDBACK_MODE, current.get(CONF_FEEDBACK_MODE, FEEDBACK_STANDARD))
+                enabling = requested_mode == FEEDBACK_LEGACY_EMOS and current.get(CONF_FEEDBACK_MODE, FEEDBACK_STANDARD) != requested_mode
+                if enabling and not getattr(self, '_legacy_confirmed', False):
+                    self._legacy_input = dict(user_input)
+                    self._legacy_owner = (manager, manager.cover._parameter_epoch,
+                                          dict(self.config_entry.options), manager.revision)
+                    return await self.async_step_confirm_legacy()
+                if enabling:
+                    owner, epoch, saved_options, revision = self._legacy_owner
+                    if (manager is not owner or manager.cover._parameter_epoch != epoch
+                            or dict(self.config_entry.options) != saved_options
+                            or manager.revision != revision):
+                        raise ServiceValidationError('Legacy confirmation owner changed')
+                    user_input = {**user_input, CONF_AUTO_STOP_AT_TRAVEL_END: True}
+                numeric = {key: user_input[key] for key in RANGES
+                           if key in user_input and user_input[key] != manager.parameters[key]}
+                if numeric:
+                    updated = await manager.async_update(
+                        numeric, _mutation_context(self),
+                        expected_revision=revision if enabling else None,
+                        allow_unknown=enabling)
+                    if enabling:
+                        revision = updated['revision']
+                elif requested_mode == current.get(CONF_FEEDBACK_MODE, FEEDBACK_STANDARD) == FEEDBACK_STANDARD:
+                    # Retain standard-mode no-op policy/readback validation.
+                    await manager.async_update(
+                        {key: user_input[key] for key in RANGES if key in user_input},
+                        _mutation_context(self))
+                options = await manager.async_update_options(
+                    {k: v for k, v in user_input.items() if k not in RANGES},
                     _mutation_context(self),
-                )
+                    expected_revision=revision if enabling else None,
+                    expected_epoch=epoch if enabling else None,
+                    expected_options=saved_options if enabling else None)
             except ServiceValidationError:
-                return self.async_show_form(step_id="init", data_schema=_schema(current),
+                self._legacy_confirmed = False
+                return self.async_show_form(step_id="init", data_schema=self._options_schema(current),
                                             errors={"base": "hardware_policy_unavailable"})
-            options = {**self.config_entry.options,
-                       **{k: v for k, v in user_input.items() if k not in RANGES}}
-            changed = any(current.get(k) != v for k, v in user_input.items() if k not in RANGES)
-            if changed:
-                self.hass.config_entries.async_update_entry(self.config_entry, options=options)
-                await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+            self._legacy_confirmed = False
             return self.async_create_entry(title="", data=options)
-        schema = vol.Schema(
+        return self.async_show_form(step_id="init", data_schema=self._options_schema(current))
+
+    async def async_step_confirm_legacy(self, user_input=None):
+        """Require explicit acknowledgement; revalidate admission on confirmation."""
+        if user_input is not None and user_input.get(CONF_ACKNOWLEDGE_LEGACY_RISK) is True:
+            self._legacy_confirmed = True
+            return await self.async_step_init(self._legacy_input)
+        return self.async_show_form(
+            step_id="confirm_legacy", data_schema=vol.Schema({
+                vol.Required(CONF_ACKNOWLEDGE_LEGACY_RISK, default=False): selector.BooleanSelector(),
+            }), errors={"base": "legacy_risk_ack_required"} if user_input is not None else {})
+
+    @staticmethod
+    def _options_schema(current):
+        return vol.Schema(
             {
+                vol.Required(CONF_FEEDBACK_MODE, default=current.get(CONF_FEEDBACK_MODE, FEEDBACK_STANDARD)):
+                    selector.SelectSelector(selector.SelectSelectorConfig(
+                        options=[FEEDBACK_STANDARD, FEEDBACK_LEGACY_EMOS],
+                        translation_key="feedback_mode", mode=selector.SelectSelectorMode.DROPDOWN)),
                 vol.Required(
                     CONF_OFF_CONFIRMATION_TIMEOUT,
                     default=current.get(CONF_OFF_CONFIRMATION_TIMEOUT, DEFAULT_OFF_CONFIRMATION_TIMEOUT),
@@ -338,4 +392,3 @@ class RollupOptionsFlow(config_entries.OptionsFlowWithReload):
                 ): selector.BooleanSelector(),
             }
         )
-        return self.async_show_form(step_id="init", data_schema=schema)

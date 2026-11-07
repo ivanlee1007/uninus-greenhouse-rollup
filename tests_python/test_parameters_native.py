@@ -33,6 +33,8 @@ class NativeParametersTest(unittest.IsolatedAsyncioTestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.hass = HomeAssistant(self.temp.name)
         loader.async_setup(self.hass)
+        from homeassistant.helpers import frame
+        frame.async_setup(self.hass)
         from homeassistant.auth import auth_manager_from_config
         self.hass.config_entries = ConfigEntries(self.hass, {})
         await self.hass.config_entries.async_initialize()
@@ -106,6 +108,8 @@ class NativeParametersTest(unittest.IsolatedAsyncioTestCase):
 
         self.hass = HomeAssistant(self.temp.name)
         loader.async_setup(self.hass)
+        from homeassistant.helpers import frame
+        frame.async_setup(self.hass)
         self.hass.config_entries = ConfigEntries(self.hass, {})
         await self.hass.config_entries.async_initialize()
         dr.async_setup(self.hass)
@@ -498,14 +502,17 @@ class NativeParametersTest(unittest.IsolatedAsyncioTestCase):
         from unittest.mock import patch
         import threading
         manager = self.hass.data[DOMAIN]['parameters'][self.entry.entry_id]
-        original = manager.store._write_prepared_data
+        # Core 2026.11 delegates the same executor write to per-Store I/O.
+        physical_owner = manager.store if hasattr(manager.store, '_write_prepared_data') else manager.store._io
+        physical_method = '_write_prepared_data' if physical_owner is manager.store else '_write'
+        original = getattr(physical_owner, physical_method)
         entered, release = threading.Event(), threading.Event()
         def physical(*args):
             entered.set()
             if not release.wait(5):
                 raise RuntimeError('test executor release timeout')
             return original(*args)
-        with patch.object(manager.store, '_write_prepared_data', physical):
+        with patch.object(physical_owner, physical_method, physical):
             edit = asyncio.create_task(self.batch({'open_travel_time': 211}))
             self.assertTrue(await asyncio.to_thread(entered.wait, 3))
             self.assertTrue(manager.lock.locked())
@@ -553,6 +560,8 @@ class NativeParametersTest(unittest.IsolatedAsyncioTestCase):
         await self.hass.async_stop()
         self.hass = HomeAssistant(self.temp.name)
         loader.async_setup(self.hass)
+        from homeassistant.helpers import frame
+        frame.async_setup(self.hass)
         self.hass.config_entries = ConfigEntries(self.hass, {})
         await self.hass.config_entries.async_initialize()
         dr.async_setup(self.hass)
@@ -629,14 +638,17 @@ class NativeParametersTest(unittest.IsolatedAsyncioTestCase):
         from unittest.mock import patch
         import threading
         manager = self.hass.data[DOMAIN]['parameters'][self.entry.entry_id]
-        original = manager.store._write_prepared_data
+        # Core 2026.11 delegates the same executor write to per-Store I/O.
+        physical_owner = manager.store if hasattr(manager.store, '_write_prepared_data') else manager.store._io
+        physical_method = '_write_prepared_data' if physical_owner is manager.store else '_write'
+        original = getattr(physical_owner, physical_method)
         entered, release = threading.Event(), threading.Event()
         def physical(*args):
             entered.set()
             if not release.wait(5):
                 raise RuntimeError('test executor release timeout')
             return original(*args)
-        with patch.object(manager.store, '_write_prepared_data', physical):
+        with patch.object(physical_owner, physical_method, physical):
             task = asyncio.create_task(manager.async_update({'open_travel_time': 245}, Context()))
             try:
                 self.assertTrue(await asyncio.to_thread(entered.wait, 3))
@@ -662,14 +674,17 @@ class NativeParametersTest(unittest.IsolatedAsyncioTestCase):
         from homeassistant.exceptions import HomeAssistantError
         import threading
         manager = self.hass.data[DOMAIN]['parameters'][self.entry.entry_id]
-        original = manager.store._write_prepared_data
+        # Core 2026.11 delegates the same executor write to per-Store I/O.
+        physical_owner = manager.store if hasattr(manager.store, '_write_prepared_data') else manager.store._io
+        physical_method = '_write_prepared_data' if physical_owner is manager.store else '_write'
+        original = getattr(physical_owner, physical_method)
         entered, release = threading.Event(), threading.Event()
         def physical(*args):
             entered.set()
             if not release.wait(5):
                 raise RuntimeError('test executor release timeout')
             return original(*args)
-        with patch.object(manager.store, '_write_prepared_data', physical), \
+        with patch.object(physical_owner, physical_method, physical), \
              patch.object(manager, '_publish', wraps=manager._publish) as publish:
             task = asyncio.create_task(self.batch({'open_travel_time': 246}))
             self.assertTrue(await asyncio.to_thread(entered.wait, 3))
