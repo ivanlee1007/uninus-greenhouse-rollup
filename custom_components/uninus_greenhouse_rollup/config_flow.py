@@ -320,10 +320,12 @@ class RollupOptionsFlow(config_entries.OptionsFlowWithReload):
                 numeric = {key: user_input[key] for key in RANGES
                            if key in user_input and user_input[key] != manager.parameters[key]}
                 if numeric:
-                    await manager.async_update(
+                    updated = await manager.async_update(
                         numeric, _mutation_context(self),
                         expected_revision=revision if enabling else None,
                         allow_unknown=enabling)
+                    if enabling:
+                        revision = updated['revision']
                 elif requested_mode == current.get(CONF_FEEDBACK_MODE, FEEDBACK_STANDARD) == FEEDBACK_STANDARD:
                     # Retain standard-mode no-op policy/readback validation.
                     await manager.async_update(
@@ -331,7 +333,10 @@ class RollupOptionsFlow(config_entries.OptionsFlowWithReload):
                         _mutation_context(self))
                 options = await manager.async_update_options(
                     {k: v for k, v in user_input.items() if k not in RANGES},
-                    _mutation_context(self))
+                    _mutation_context(self),
+                    expected_revision=revision if enabling else None,
+                    expected_epoch=epoch if enabling else None,
+                    expected_options=saved_options if enabling else None)
             except ServiceValidationError:
                 self._legacy_confirmed = False
                 return self.async_show_form(step_id="init", data_schema=self._options_schema(current),

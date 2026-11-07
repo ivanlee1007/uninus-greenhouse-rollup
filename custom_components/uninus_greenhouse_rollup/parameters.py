@@ -131,7 +131,8 @@ class ParameterManager:
         if allow_unknown or cover._feedback_mode == 'legacy_emos':
             cover._validate_legacy_motion()
 
-    async def async_update_options(self, changes, context):
+    async def async_update_options(self, changes, context, *, expected_revision=None,
+                                   expected_epoch=None, expected_options=None):
         """Persist and apply idle-only options without reload or relay I/O."""
         from .cover import _DEVICE_CLASS_BY_ACTUATOR_TYPE
 
@@ -145,6 +146,15 @@ class ParameterManager:
             if cover._command_lock.locked() or epoch != cover._parameter_epoch:
                 raise ServiceValidationError('Hardware command or options pending')
             async with cover._command_lock:
+                await self._authorize(context, targets)
+                self._owned()
+                # Confirmation is a CAS at the final non-yielding mode commit,
+                # not a grant checked only before authorization/admission awaits.
+                if (epoch != cover._parameter_epoch or cover.entity_id != targets[0]
+                        or expected_epoch is not None and expected_epoch != cover._parameter_epoch
+                        or expected_revision is not None and expected_revision != self.revision
+                        or expected_options is not None and expected_options != dict(self.entry.options)):
+                    raise ServiceValidationError('Legacy confirmation owner changed')
                 mode = changes.get('feedback_mode', cover._feedback_mode)
                 self._idle(allow_unknown=mode != cover._feedback_mode)
                 if mode not in ('standard', 'legacy_emos'):

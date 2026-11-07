@@ -79,6 +79,7 @@ class RollupExtraStoredData(ExtraStoredData):
     open_travel_time: float
     close_travel_time: float
     motion_interrupted: bool | None = None
+    stop_command_error: bool | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Return durable position and the travel model that produced it."""
@@ -90,6 +91,8 @@ class RollupExtraStoredData(ExtraStoredData):
         }
         if self.motion_interrupted is not None:
             result["motion_interrupted"] = self.motion_interrupted
+        if self.stop_command_error is not None:
+            result["stop_command_error"] = self.stop_command_error
         return result
 
 
@@ -123,6 +126,7 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
             raise ValueError("Unsupported feedback_mode")
         self._legacy_direction = "idle"
         self._legacy_feedback_quarantine: set[str] = set()
+        self._legacy_starting_direction = "idle"
         self._position_basis = "unknown"
         self._interrupted_motion = False
         self._stop_error = False
@@ -194,6 +198,8 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
         )
         if isinstance(snapshot, dict):
             self._interrupted_motion = snapshot.get("motion_interrupted", False) is True
+            self._stop_error = snapshot.get("stop_command_error", False) is True
+            self._interrupted_motion |= self._stop_error
             keys = (CONF_OPEN_TRAVEL_TIME, CONF_CLOSE_TRAVEL_TIME)
             timing_source = snapshot if any(key in snapshot for key in keys) else attributes
             saved_times = (
@@ -237,6 +243,7 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
             self._estimator.position, self._estimator.confidence,
             self._open_travel_time, self._close_travel_time,
             self._interrupted_motion if self._feedback_mode == FEEDBACK_LEGACY_EMOS else None,
+            self._stop_error if self._feedback_mode == FEEDBACK_LEGACY_EMOS else None,
         )
 
     @callback
@@ -351,9 +358,16 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
             return
         opening = entity == self._open_entity
         opposite = self.hass.states.get(self._close_entity if opening else self._open_entity)
-        if self._legacy_direction != "idle":
-            expected = self._open_entity if self._legacy_direction == "opening" else self._close_entity
+        direction = (self._legacy_starting_direction
+                     if self._legacy_starting_direction != "idle" else self._legacy_direction)
+        if direction != "idle":
+            expected = self._open_entity if direction == "opening" else self._close_entity
             if entity != expected and new == STATE_ON and not self._conflict_stop_pending:
+                # Invalidate synchronously: ON may return without yielding to the
+                # fail-safe task, or may raise/cancel after energizing.
+                self._command_generation += 1
+                self._cancel_auto_stop_task()
+                self._legacy_feedback_quarantine.update((self._open_entity, self._close_entity))
                 self._conflict_stop_pending = True
                 self._conflict_stop_task = self.hass.async_create_task(self._async_fail_safe_stop())
             if self._position_basis == "feedback_estimated" and new == "off" and entity == expected:
@@ -861,10 +875,18 @@ class UninusGreenhouseRollupCover(CoverEntity, RestoreEntity):
     async def _async_turn_on(self, entity_id: str) -> None:
         if self._feedback_mode == FEEDBACK_LEGACY_EMOS:
             self._legacy_feedback_quarantine.add(entity_id)
-        await self.hass.services.async_call(
-            SWITCH_DOMAIN,
-            SERVICE_TURN_ON,
-            {ATTR_ENTITY_ID: entity_id},
-            blocking=True,
-            context=self._context,
-        )
+            # Dispatch may energize before raising. Retain durable uncertainty
+            # and interlock intent without starting the successful-run estimator.
+            self._interrupted_motion = True
+            self._legacy_starting_direction = (
+                "opening" if entity_id == self._open_entity else "closing")
+        try:
+            await self.hass.services.async_call(
+                SWITCH_DOMAIN,
+                SERVICE_TURN_ON,
+                {ATTR_ENTITY_ID: entity_id},
+                blocking=True,
+                context=self._context,
+            )
+        finally:
+            self._legacy_starting_direction = "idle"
