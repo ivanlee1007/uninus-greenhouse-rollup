@@ -148,6 +148,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             ):
                 raise ServiceValidationError(f"Cover ownership changed: {entity_id}")
             cover.validate_auto_stop_change()
+            if cover._feedback_mode == 'legacy_emos' and call.data['enabled'] is False:
+                raise ServiceValidationError('Legacy EMOS requires timer stop')
             covers.append(cover)
 
         updated = []

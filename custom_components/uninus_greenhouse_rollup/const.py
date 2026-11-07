@@ -1,6 +1,10 @@
 """Constants for the UNiNUS greenhouse roll-up integration."""
 
 DOMAIN = "uninus_greenhouse_rollup"
+CONF_FEEDBACK_MODE = "feedback_mode"
+FEEDBACK_STANDARD = "standard"
+FEEDBACK_LEGACY_EMOS = "legacy_emos"
+CONF_ACKNOWLEDGE_LEGACY_RISK = "acknowledge_legacy_risk"
 PLATFORMS = ["cover", "number"]
 SERVICE_SET_AUTO_STOP_AT_TRAVEL_END = "set_auto_stop_at_travel_end"
 

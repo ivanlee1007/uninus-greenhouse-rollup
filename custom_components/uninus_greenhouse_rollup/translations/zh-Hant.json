@@ -67,13 +67,21 @@
           "close_travel_time": "全關行程秒數",
           "off_confirmation_timeout": "雙繼電器關閉確認逾時秒數（0.1–30）",
           "reverse_dead_time": "方向切換安全間隔秒數",
-          "auto_stop_at_travel_end": "行程結束後自動關閉兩個方向 Switch"
+          "auto_stop_at_travel_end": "行程結束後自動關閉兩個方向 Switch",
+          "feedback_mode": "繼電器回授模式"
         },
         "data_description": {
           "actuator_type": "遮陽簾的「開啟」代表收回，「關閉」代表展開。",
-          "auto_stop_at_travel_end": "啟用後，由此 Cover 啟動全開或全關時，設定的行程秒數到達後會對開啟與關閉 Switch 都執行 turn_off。既有設定預設關閉，以維持原行為。"
+          "auto_stop_at_travel_end": "標準模式可選擇；舊版 EMOS 相容模式強制啟用，服務及選項均不可停用。"
         },
-        "description": "硬體數值與原生 Number 共用同一儲存權威，僅閒置且兩方向 off 時可修改；僅修改數值不重新載入。全行程時間改動後必須重新明確校正端點。"
+        "description": "僅停止且沒有待執行命令或已知 ON 回授時可儲存。模式切換容許 unknown，但來源遺失、停用或 unavailable 均拒絕。選項不重新載入、不操作繼電器。預設為標準模式；EMOS 相容模式略過 OFF 回授確認且強制計時停止。"
+      },
+      "confirm_legacy": {
+        "title": "確認舊版 EMOS 控制風險",
+        "description": "僅適用已確認實體停止、只在狀態變更時回報的 EMOS 硬體。本模式容許 unknown 回授，發送 OFF、等待安全間隔後，未觀察到 OFF 也會發送 ON。服務成功不代表繼電器輸出、馬達移動、位置或抵達已確認；記憶位置尚未驗證。強制計時 OFF 仍無法在 HA、網路或設備故障時保證斷電，必須保留獨立硬體互鎖、限位與計時保護。啟用模式本身不操作繼電器。",
+        "data": {
+          "acknowledge_legacy_risk": "我了解並接受上述風險"
+        }
       }
     },
     "abort": {
@@ -81,7 +89,8 @@
       "hardware_policy_unavailable": "硬體參數不可修改：請確認閒置、兩個實際繼電器皆為 off、沒有待執行命令，且儲存及發布正常。"
     },
     "error": {
-      "hardware_policy_unavailable": "硬體參數不可修改：請確認閒置、兩個實際繼電器皆為 off、沒有待執行命令，且儲存及發布正常。"
+      "hardware_policy_unavailable": "硬體參數不可修改：請確認閒置、兩個實際繼電器皆為 off、沒有待執行命令，且儲存及發布正常。",
+      "legacy_risk_ack_required": "必須明確勾選風險確認。"
     }
   },
   "services": {
@@ -95,7 +104,7 @@
         },
         "enabled": {
           "name": "啟用",
-          "description": "true 會在下一次 Cover 命令的行程時間結束後關閉兩個 Switch；false 改依賴硬體或 Switch 計時。僅接受布林值。"
+          "description": "true 會在下一次 Cover 命令的行程時間結束後關閉兩個 Switch；false 改依賴硬體或 Switch 計時。僅接受布林值。 EMOS 相容模式拒絕 false。"
         }
       }
     },
@@ -124,6 +133,12 @@
         "rollup": "捲揚",
         "skylight": "天窗",
         "shade": "遮陽簾"
+      }
+    },
+    "feedback_mode": {
+      "options": {
+        "standard": "標準（確認 OFF 後才啟動）",
+        "legacy_emos": "舊版 EMOS 相容（命令估算）"
       }
     }
   },

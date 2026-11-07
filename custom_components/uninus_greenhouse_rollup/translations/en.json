@@ -59,9 +59,17 @@
   },
   "options": {
     "step": {
+      "confirm_legacy": {
+        "title": "Acknowledge legacy EMOS control risk",
+        "description": "Only enable for change-only EMOS hardware you have verified physically stopped. This mode permits unknown feedback and sends OFF, waits the safety delay, then sends ON without observing OFF. Successful services do not confirm relay output, motion, position or arrival. Remembered positions are unverified. Timer OFF is mandatory but cannot guarantee de-energizing during HA/network/device failure. Use independent hardware interlocks, limits and timers. Enabling itself does not operate relays.",
+        "data": {
+          "acknowledge_legacy_risk": "I understand and accept these risks"
+        }
+      },
       "init": {
         "title": "Adjust cover type, travel, and safety settings",
         "data": {
+          "feedback_mode": "Relay feedback mode",
           "actuator_type": "Cover type",
           "open_travel_time": "Full opening travel time (seconds)",
           "close_travel_time": "Full closing travel time (seconds)",
@@ -71,9 +79,9 @@
         },
         "data_description": {
           "actuator_type": "For a shade, Open retracts it and Close extends it.",
-          "auto_stop_at_travel_end": "When enabled, a full-open or full-close command from this Cover turns off both direction switches after the configured travel time. Existing entries default to off to preserve their current behavior."
+          "auto_stop_at_travel_end": "Optional in standard mode. Mandatory in legacy EMOS mode; neither Options nor the service may disable it."
         },
-        "description": "Hardware Numbers and this form share one policy authority. Edit only while idle with both relays off. Numeric-only saves do not reload; full-travel changes require explicit endpoint calibration again."
+        "description": "Save only while stopped, without pending commands or known-ON relays. Mode changes allow unknown, but not missing, disabled or unavailable sources. Options do not reload or operate relays. Standard is the default. Legacy EMOS bypasses observed-OFF confirmation and forces timer stop."
       }
     },
     "abort": {
@@ -81,7 +89,8 @@
       "hardware_policy_unavailable": "Hardware policy unavailable: stop, verify both relays OFF and no pending commands; resolve storage/publication faults before reload."
     },
     "error": {
-      "hardware_policy_unavailable": "Hardware policy unavailable: stop, verify both relays OFF and no pending commands; resolve storage/publication faults before reload."
+      "hardware_policy_unavailable": "Hardware policy unavailable: stop, verify both relays OFF and no pending commands; resolve storage/publication faults before reload.",
+      "legacy_risk_ack_required": "Explicit risk acknowledgement is required."
     }
   },
   "services": {
@@ -95,7 +104,7 @@
         },
         "enabled": {
           "name": "Enabled",
-          "description": "True turns off both relays after the next Cover command's travel time. False relies on hardware or switch timers instead; only a boolean is accepted."
+          "description": "True turns off both relays after the next Cover command's travel time. False relies on hardware or switch timers instead; only a boolean is accepted. Legacy EMOS mode rejects false."
         }
       }
     },
@@ -119,6 +128,12 @@
     }
   },
   "selector": {
+    "feedback_mode": {
+      "options": {
+        "standard": "Standard (observed OFF interlock)",
+        "legacy_emos": "Legacy EMOS compatibility (command-estimated)"
+      }
+    },
     "actuator_type": {
       "options": {
         "rollup": "Roll-up",

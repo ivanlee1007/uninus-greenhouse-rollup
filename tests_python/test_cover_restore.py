@@ -25,6 +25,16 @@ class CoverRestoreTest(IsolatedAsyncioTestCase):
         self.addCleanup(directory.cleanup)
         self.hass = HomeAssistant(directory.name)
         self.addAsyncCleanup(self.hass.async_stop, force=True)
+        from homeassistant import loader
+        from homeassistant.config_entries import ConfigEntries
+        loader.async_setup(self.hass)
+        self.hass.config_entries = ConfigEntries(self.hass, {})
+        await self.hass.config_entries.async_initialize()
+        # Core 2026.11 restore aliases consult the loaded entity registry.
+        from homeassistant.helpers import device_registry as dr, entity_registry as er
+        dr.async_setup(self.hass)
+        await dr.async_load(self.hass)
+        await er.async_load(self.hass)
         self.hass.states.async_set("switch.open", "off")
         self.hass.states.async_set("switch.close", "off")
 
@@ -53,7 +63,9 @@ class CoverRestoreTest(IsolatedAsyncioTestCase):
         cover._async_stop_active_relays_on_startup.assert_awaited_once()
 
     def set_saved_state(self, cover, extra_data, attributes=None):
-        restore_state.async_get(self.hass).last_states[cover.entity_id] = (
+        saved = restore_state.async_get(self.hass)
+        states = saved.last_states if hasattr(saved, 'last_states') else saved.last_states_by_entity_id
+        states[cover.entity_id] = (
             restore_state.StoredState(
                 State(cover.entity_id, "unavailable", attributes or {}),
                 restore_state.RestoredExtraData(extra_data)
@@ -133,6 +145,26 @@ class CoverRestoreTest(IsolatedAsyncioTestCase):
         await self.add_cover(cover)
         self.assertIsNone(cover.current_cover_position)
         self.assertEqual(cover._estimator.confidence, "unknown")
+
+    async def test_legacy_restore_keeps_precise_unavailable_snapshot_but_never_motion(self):
+        cover = self.make_cover()
+        cover._feedback_mode = 'legacy_emos'
+        self.hass.states.async_set('switch.open', 'unknown')
+        self.hass.states.async_set('switch.close', 'unknown')
+        self.set_saved_state(cover, {'position': 37.125, 'confidence': 'estimated',
+            'open_travel_time': 100, 'close_travel_time': 100, 'motion_interrupted': True})
+        await self.add_cover(cover)
+        self.assertEqual(cover._estimator.position, 37.125)
+        self.assertTrue(cover.available)
+        self.assertEqual(cover.extra_state_attributes['position_basis'], 'remembered')
+        self.assertTrue(cover.extra_state_attributes['position_unverified'])
+        self.assertTrue(cover.extra_state_attributes['motion_interrupted'])
+        self.assertEqual(cover._estimator.command_state, 'idle')
+        self.assertIsNone(cover._auto_stop_task)
+        self.hass.states.async_set('switch.open', 'unavailable')
+        cover._sync_from_switches()
+        self.assertFalse(cover.available)
+        self.assertEqual(cover.extra_restore_state_data.as_dict()['position'], 37.125)
 
     async def test_restored_position_survives_unavailable_sources_until_recovery(self):
         for source in ("switch.open", "switch.close"):
