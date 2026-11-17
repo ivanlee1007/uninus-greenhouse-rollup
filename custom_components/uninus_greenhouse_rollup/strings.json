@@ -143,6 +143,16 @@
     }
   },
   "entity": {
+    "sensor": {
+      "estimated_position": {
+        "name": "Estimated opening position"
+      }
+    },
+    "binary_sensor": {
+      "position_known": {
+        "name": "Estimated position known"
+      }
+    },
     "number": {
       "open_travel_time": {
         "name": "Full opening travel time"

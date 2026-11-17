@@ -5,7 +5,7 @@ CONF_FEEDBACK_MODE = "feedback_mode"
 FEEDBACK_STANDARD = "standard"
 FEEDBACK_LEGACY_EMOS = "legacy_emos"
 CONF_ACKNOWLEDGE_LEGACY_RISK = "acknowledge_legacy_risk"
-PLATFORMS = ["cover", "number"]
+PLATFORMS = ["cover", "number", "sensor", "binary_sensor"]
 SERVICE_SET_AUTO_STOP_AT_TRAVEL_END = "set_auto_stop_at_travel_end"
 
 CONF_ACTUATOR_MODE = "actuator_mode"

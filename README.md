@@ -105,6 +105,23 @@ data:
 - `target_position` 是此行程要求的目標，不代表實際位置。`target_operation` 為 `idle`、`running`、`stopping`（時間預算已到，正在關閉兩路及等待回報）、`timer_elapsed` 或 `error`（停止服務失敗或關閉確認逾時）；只有觀察到兩個 Switch 都為 `off`，才標示 `timer_elapsed`，仍不表示馬達抵達目標或已量測實體限位。逾時仍為 `on`／未知／斷線時會記錄錯誤，不假裝已斷電。停止或被新命令取代後目標清除；不從 RestoreEntity 恢復目標。
 - `position_is_estimated` 永遠為 `true`，`physical_arrival_confirmed` 永遠為 `false`；`current_position` 仍由原本無限位時間估算器產生，不會直接把要求值當成已抵達位置。
 
+### 原生估算位置感測器與視覺化自動化
+
+每個本整合擁有的 `dual_switch` 致動器（`standard` 與 `legacy_emos`）會在**同一裝置、同一 Config Entry** 下建立兩個唯讀實體，不需卡片、範本 Helper 或新服務：
+
+- **估算開啟位置**（`sensor`）：數值 `0–100`、單位 `%`，與 Cover 的整數 `current_position` 相同；`0` 全關、`100` 全開。遮陽簾的全開仍是完全收回，不是覆蓋百分比。
+- **估算位置已知**（`binary_sensor`）：來源可用且有有效估算時為 `on`；來源可用但位置未知時為 `off`。位置未知的 Sensor 是 `unknown`，**不會補成 `0`**。來源 Cover 遺失、停用或不可用時，兩者都是 `unavailable`，不把不可用假裝成已知／未知的布林判斷。
+
+請從「設定 → 裝置與服務 → 本整合 → 該致動器裝置 → 實體」確認實際 Entity ID，不要由名稱推測。實體 Unique ID 由 Entry ID 與固定語意欄位組成；改名、重新載入不改身分。`native_cover` 舊直通設定不建立這兩個實體，也不替外部 Cover 接管位置。既有 Cover、硬體 Number 與控制服務均保留。
+
+在「設定 → 自動化與場景 → 建立自動化」的視覺化編輯器中：
+
+1. 新增「數值狀態」觸發條件，選擇該裝置的「估算開啟位置」，例如「高於 80」。使用數值 Sensor 本身，不需選 Cover attribute 或撰寫範本。
+2. 新增「狀態」條件，選擇同裝置的「估算位置已知」，狀態為 `on`；可另外確認來源 Cover 可用。
+3. 動作可選通知等原生動作；控制馬達時仍使用原本 Cover 動作，保留硬體互鎖、限位與獨立計時保護。數值觸發在跨越門檻時觸發，不代表啟動時已高於門檻就一定執行。
+
+**「已知」只代表有可用的估算，不是實體抵達／限位或校正確認。** 兩個實體都揭露 `position_is_estimated: true`、`position_unverified: true`、`physical_arrival_confirmed: false`；重啟後沿用 Cover 的還原權威，記憶位置會揭露 `position_basis: remembered`。新增、讀取或更新感測器不發送繼電器命令、不自行推算／還原、不啟動運動；Cover 本身原有的啟動／卸載安全停止不變。行程參數改變使 Cover 估算失效時，Sensor 同步變為 `unknown`，已知旗標為 `off`。
+
 ### 確認雙繼電器關閉後才啟動
 
 每次 Cover 啟動方向前，都先發送兩個 `turn_off`、等待方向切換安全間隔，再檢查**兩個來源狀態都為 `off`**；服務成功回覆不等於關閉確認。支援延遲更新的非同步狀態讀回，最長等待 `off_confirmation_timeout`，逾時明確報錯且不發送任何 `turn_on`。缺少狀態、`unknown`、`unavailable` 或其他非 `off` 狀態均不能放行。等待中的停止／反向新命令會阻止舊命令稍後重新啟動。

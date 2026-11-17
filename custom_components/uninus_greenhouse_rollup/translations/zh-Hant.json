@@ -143,6 +143,16 @@
     }
   },
   "entity": {
+    "sensor": {
+      "estimated_position": {
+        "name": "估算開啟位置"
+      }
+    },
+    "binary_sensor": {
+      "position_known": {
+        "name": "估算位置已知"
+      }
+    },
     "number": {
       "open_travel_time": {
         "name": "全開行程時間"
