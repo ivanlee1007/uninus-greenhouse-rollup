@@ -7,11 +7,19 @@ INTEGRATION = ROOT / "custom_components" / "uninus_greenhouse_rollup"
 
 
 class IntegrationContractTest(unittest.TestCase):
+    def test_position_entities_have_names_in_every_shipped_language(self):
+        from custom_components.uninus_greenhouse_rollup.const import PLATFORMS
+        self.assertEqual(PLATFORMS, ['cover', 'number', 'sensor', 'binary_sensor'])
+        for path in (INTEGRATION / 'strings.json', *sorted((INTEGRATION / 'translations').glob('*.json'))):
+            strings = json.loads(path.read_text(encoding='utf-8'))
+            for domain, key in (('sensor', 'estimated_position'), ('binary_sensor', 'position_known')):
+                self.assertTrue(strings['entity'].get(domain, {}).get(key, {}).get('name'), path.name)
+
     def test_manifest_declares_config_flow_and_cover_integration(self):
         manifest = json.loads((INTEGRATION / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["domain"], "uninus_greenhouse_rollup")
         self.assertEqual(manifest["name"], "UNiNUS Greenhouse Cover Actuator")
-        self.assertEqual(manifest["version"], "3.4.0")
+        self.assertEqual(manifest["version"], "3.5.0")
         self.assertTrue(manifest["config_flow"])
         self.assertEqual(manifest["integration_type"], "service")
         self.assertEqual(manifest["iot_class"], "calculated")
